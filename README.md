@@ -18,7 +18,7 @@ Connect your iPhone in **DFU + usbliter8 (RP2350)**, pick an iOS version, and th
 
 **Supported devices (A12/A13):**
 - iPhone XR, XS, XS Max (A12)
-- iPhone 11, 11 Pro, 11 Pro Max (A13)
+- iPhone 11, 11 Pro, 11 Pro Max,SE2 or Ipad (A13)
 - (uses usbliter8 — pwned DFU required)
 
 ---
