@@ -84,7 +84,7 @@ chmod +x setup_dependencies.sh
 ## ⚠️ Important
 
 - **Research/educational use on devices you own only.**
-- The build engine (iBoot/kernel patchfinders) is based on the open-source [ICH_A12+ Ramdisk](https://github.com/Pa7r0n/ICH_A12_plus_Ramdisk) toolkit — MIT licensed, credit to @Official_I_C_H.
+- The build engine (iBoot/kernel patchfinders) is based on the open-source toolkit — MIT licensed, credit to @Official_I_C_H.
 
 ---
 
