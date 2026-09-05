@@ -198,14 +198,19 @@ EOF
 make -C "$IBOOTIM_SRC" clean >/dev/null 2>&1 || true
 make -C "$IBOOTIM_SRC" CC="${CC:-gcc}" CFLAGS="-O2 -Wall -Wextra ${CFLAGS:-}" -j"$(nproc)"
 [[ -x "$IBOOTIM_SRC/ibootim" ]] || die "ibootim build finished without executable"
-"$IBOOTIM_SRC/ibootim" --help 2>&1 | grep -q "Converts PNGs to iBoot Embedded Images" ||
-  die "ibootim self-test failed"
+
+IBOOTIM_HELP="$(mktemp)"
+if ! "$IBOOTIM_SRC/ibootim" --help >"$IBOOTIM_HELP" 2>&1; then
+  :
+fi
+grep -Fq "Usage: ibootim" "$IBOOTIM_HELP" || {
+  cat "$IBOOTIM_HELP" >&2
+  rm -f "$IBOOTIM_HELP"
+  die "ibootim self-test failed: usage banner missing"
+}
+rm -f "$IBOOTIM_HELP"
 install -m 0755 "$IBOOTIM_SRC/ibootim" "$BUNNY_TOOLS/ibootim"
 echo "ibootim ready: $BUNNY_TOOLS/ibootim"
-[[ -x "$IBOOTIM_SRC/ibootim" ]] || die "ibootim build finished without executable"
-install -m 0755 "$IBOOTIM_SRC/ibootim" "$BUNNY_TOOLS/ibootim"
-"$BUNNY_TOOLS/ibootim" --help >/dev/null 2>&1 || true
-
 echo "==> Building Linux IMG4 patching tool"
 IMG4LIB="$ROOT/third_party/img4lib"
 if [[ ! -d "$IMG4LIB/.git" ]]; then
