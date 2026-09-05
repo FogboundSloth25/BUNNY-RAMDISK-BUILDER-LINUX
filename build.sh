@@ -339,17 +339,17 @@ if (( DRY_RUN )); then
 fi
 
 log "Patching iBEC"
-"$BUNNY_PATCH/iboot_patchfinder.py" "$WORK/iBEC.raw" "$WORK/iBEC.patched.raw" --mode ibec
+"$PY" "$BUNNY_PATCH/iboot_patchfinder.py" "$WORK/iBEC.raw" "$WORK/iBEC.patched.raw" --mode ibec
 
 if (( USE_IBSS )); then
   log "Patching iBSS"
-  "$BUNNY_PATCH/iboot_patchfinder.py" "$WORK/iBSS.raw" "$WORK/iBSS.patched.raw" --mode ibss
+  "$PY" "$BUNNY_PATCH/iboot_patchfinder.py" "$WORK/iBSS.raw" "$WORK/iBSS.patched.raw" --mode ibss
   cp "$WORK/iBSS.patched.raw" "$BOOT/iBSS.patched.raw"
 fi
 
 if [[ "$KERNEL_MODE" == patched ]]; then
   log "Patching kernel"
-  "$BUNNY_PATCH/kernel_patchfinder.py" "$WORK/kernelcache.raw" --apply "$WORK/kernelcache.patched.raw"
+  "$PY" "$BUNNY_PATCH/kernel_patchfinder.py" "$WORK/kernelcache.raw" --apply "$WORK/kernelcache.patched.raw"
 else
   cp "$WORK/kernelcache.raw" "$WORK/kernelcache.patched.raw"
 fi
