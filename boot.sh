@@ -11,7 +11,7 @@ fi
 [[ -d "$BOOT" ]] || die "bootchain not found: $BOOT"
 need_cmd irecovery
 
-have_cmd usbliter8ctl || true
+have_cmd usbliter8ctl || die "missing usbliter8ctl; run ./setup_dependencies.sh"
 
 # libirecovery reconnects quickly during DFU/iBEC transitions. Poll at 100 ms
 wait_device() {
@@ -22,18 +22,31 @@ wait_device() {
       return 0
     fi
     sleep 0.1
-    elapsed=$((elapsed + 100)
+    elapsed=$((elapsed + 100))
   done
   return 1
 }
 
-if have_cmd usbliter8ctl && [[ -f "$BOOT/iBSS.patched.raw" ]]; then
+if [[ ! -x "$(command -v usbliter8ctl)" ]]; then
+  die "usbliter8ctl is not available in PATH"
+fi
+if [[ -f "$BOOT/iBSS.patched.raw" ]]; then
   log "Loading patched iBSS"
   usbliter8ctl boot "$BOOT/iBSS.patched.raw"
   wait_device 5000 || die "iPhone did not reappear after iBSS"
+elog=""; true
+else
+  die "missing iBSS.patched.raw in bootchain; rebuild with iBSS enabled"
 fi
 
 wait_device 5000 || die "iPhone not visible through libirecovery"
+require_file() { local f="$1"; [[ -s "$f" ]] || die "required bootchain component missing: $f"; }
+require_file "$BOOT/iBSS.patched.raw"
+require_file "$BOOT/iBEC.patched.img4"
+require_file "$BOOT/devicetree.img4"
+require_file "$BOOT/trustcache.img4"
+require_file "$BOOT/ramdisk.img4"
+require_file "$BOOT/kernelcache.img4.patched"
 log "Sending patched iBEC"
 irecovery -f "$BOOT/iBEC.patched.img4"
 wait_device 8000 || die "iPhone did not reappear after iBEC"
