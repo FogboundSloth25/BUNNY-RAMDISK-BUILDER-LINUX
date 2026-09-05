@@ -516,17 +516,24 @@ fi
 
 log "Patching iBEC"
 IBOOT_LOG="$WORK/ibec-patch.log"
-"$PY" "$BUNNY_PATCH/iboot_patchfinder.py" "$WORK/iBEC.raw" "$WORK/iBEC.patched.raw" --mode ibec | tee "$IBOOT_LOG"
+"$PY" "$BUNNY_PATCH/iboot_patchfinder.py" "$WORK/iBEC.raw" "$WORK/iBEC.patched.pre-final.raw" --mode ibec | tee "$IBOOT_LOG"
 if ! grep -Eq '[1-9][0-9]* patches?, [1-9][0-9]* functions found|[1-9][0-9]* patches' "$IBOOT_LOG"; then
   echo "[x] iBEC patchfinder found no applicable patches for $PRODUCT $VERSION $BUILD" >&2
   echo "    This firmware is not confirmed by the selected patchfinder; refusing to continue with an unchanged iBEC." >&2
   exit 1
 fi
-[[ -s "$WORK/iBEC.patched.raw" ]] || die "iBEC patchfinder produced no output"
+[[ -s "$WORK/iBEC.patched.pre-final.raw" ]] || die "iBEC patchfinder produced no output"
+# The Leeksov finder has a known d321 early false-positive at 0xE10 on
+# iOS 18.x. Finalize the patched image against the stock image before IMG4
+# packaging; this restores that early site and patches the real ASN.1-near
+# image4 canary instead.
+"$PY" "$ROOT/scripts/finalize_iboot.py"   --stock "$WORK/iBEC.raw"   --input "$WORK/iBEC.patched.pre-final.raw"   --output "$WORK/iBEC.patched.raw"   --board "$MODEL"
+[[ -s "$WORK/iBEC.patched.raw" ]] || die "iBEC finalization produced no output"
 
 if (( USE_IBSS )); then
   log "Patching iBSS"
-  "$PY" "$BUNNY_PATCH/iboot_patchfinder.py" "$WORK/iBSS.raw" "$WORK/iBSS.patched.raw" --mode ibss
+  "$PY" "$BUNNY_PATCH/iboot_patchfinder.py" "$WORK/iBSS.raw" "$WORK/iBSS.patched.pre-final.raw" --mode ibss
+  "$PY" "$ROOT/scripts/finalize_iboot.py"     --stock "$WORK/iBSS.raw"     --input "$WORK/iBSS.patched.pre-final.raw"     --output "$WORK/iBSS.patched.raw"     --board "$MODEL"
   cp "$WORK/iBSS.patched.raw" "$BOOT/iBSS.patched.raw"
 fi
 
