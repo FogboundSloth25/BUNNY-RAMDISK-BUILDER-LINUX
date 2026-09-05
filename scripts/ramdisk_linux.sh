@@ -338,11 +338,12 @@ inject_hfsplus() {
   sudo cp -a "$ssh_stage/." "$mp/" || die "SSH payload injection failed"
   rm -rf "$ssh_stage"
 
-  if [[ -n "$BUNNY_RESTORED_EXTERNAL" && -s "$BUNNY_RESTORED_EXTERNAL" ]]; then
-    sudo install -D -m 0755 "$BUNNY_RESTORED_EXTERNAL"       "$mp/usr/local/bin/restored_external" ||
+  if [[ -n "${BUNNY_RESTORED_EXTERNAL:-}" && -s "$BUNNY_RESTORED_EXTERNAL" ]]; then
+    sudo install -D -m 0755 "$BUNNY_RESTORED_EXTERNAL" \
+      "$mp/usr/local/bin/restored_external" ||
       die "failed to install restored_external"
   fi
- unmount_image "$mp"
+  unmount_image "$mp"
   rmdir "$mp" 2>/dev/null || true
 }
 
