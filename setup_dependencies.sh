@@ -178,7 +178,9 @@ if [[ ! -d "$IMG4LIB/.git" ]]; then
 else
   git -C "$IMG4LIB" submodule update --init --recursive
 fi
+make -C "$IMG4LIB/lzfse" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
 make -C "$IMG4LIB" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
 cp "$IMG4LIB/img4" "$ROOT/.local/img4"
 chmod +x "$ROOT/.local/img4"
 echo "IMG4 tool ready: $ROOT/.local/img4"
+"$ROOT/.local/img4" -h >/dev/null
