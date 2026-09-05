@@ -256,6 +256,47 @@ fetch_member() {
   [[ -n "$p" ]] || return 0
   dst="$CACHE/$(basename "$p")"
 
+  if [[ "$key" == "iBSS" || "$key" == "iBEC" ]]; then
+    # Always extract these two boot stages from the verified local IPSW. They
+    # must never be substituted by another cached file with a coincidental
+    # basename/content collision.
+    if [[ -n "$LOCAL_REMOTE_IPSW" ]]; then
+      "$PY" - "$LOCAL_REMOTE_IPSW" "$p" "$dst" <<'PY'
+import sys, zipfile
+from pathlib import Path
+ipsw, requested, out = map(Path, sys.argv[1:])
+with zipfile.ZipFile(ipsw) as z:
+    names = z.namelist()
+    exact = str(requested)
+    if exact not in names:
+        raise SystemExit(f"missing IPSW member: {exact}")
+    info = z.getinfo(exact)
+    if info.file_size <= 0:
+        raise SystemExit(f"empty IPSW member: {exact}")
+    out.write_bytes(z.read(exact))
+    print(f"{exact}: {info.file_size} bytes, crc={info.CRC:08x}")
+PY
+    elif [[ -n "$LOCAL_IPSW" ]]; then
+      "$PY" - "$LOCAL_IPSW" "$p" "$dst" <<'PY'
+import sys, zipfile
+from pathlib import Path
+ipsw, requested, out = map(Path, sys.argv[1:])
+with zipfile.ZipFile(ipsw) as z:
+    exact = str(requested)
+    try:
+        info = z.getinfo(exact)
+    except KeyError:
+        raise SystemExit(f"missing IPSW member: {exact}")
+    out.write_bytes(z.read(exact))
+    print(f"{exact}: {info.file_size} bytes, crc={info.CRC:08x}")
+PY
+    else
+      die "no verified local IPSW available for $key"
+    fi
+    [[ -s "$dst" ]] || die "$key extraction produced an empty file"
+    return 0
+  fi
+
   if [[ ! -s "$dst" ]]; then
     if [[ -n "$LOCAL_IPSW" ]]; then
       "$PY" - "$LOCAL_IPSW" "$p" "$dst" <<'PY'
@@ -388,15 +429,18 @@ if (( USE_IBSS )); then
   iBEC_SIZE="$(stat -c %s "$WORK/iBEC.raw")"
   iBSS_HASH="$(sha256sum "$WORK/iBSS.raw" | awk '{print $1}')"
   iBEC_HASH="$(sha256sum "$WORK/iBEC.raw" | awk '{print $1}')"
+  echo "iBSS source: $IBSS_PATH"
+  echo "iBEC source: $IBEC_PATH"
   echo "iBSS raw: $iBSS_SIZE bytes $iBSS_HASH"
   echo "iBEC raw: $iBEC_SIZE bytes $iBEC_HASH"
+  [[ "$IBSS_PATH" == Firmware/dfu/iBSS.*.RELEASE.im4p ]] ||
+    echo "warning: unexpected iBSS manifest path: $IBSS_PATH" >&2
+  [[ "$IBEC_PATH" == Firmware/dfu/iBEC.*.RELEASE.im4p ]] ||
+    die "unexpected iBEC manifest path: $IBEC_PATH"
   [[ "$iBSS_HASH" != "$iBEC_HASH" ]] || {
-    echo "[x] iBSS and iBEC extracted payloads are identical." >&2
-    echo "    iBSS source: $IBSS_PATH" >&2
-    echo "    iBEC source: $IBEC_PATH" >&2
-    echo "    cached iBSS: $CACHE/$(basename "$IBSS_PATH")" >&2
-    echo "    cached iBEC: $CACHE/$(basename "$IBEC_PATH")" >&2
-    die "refusing ambiguous bootchain"
+    echo "[x] iBSS and iBEC payloads are identical." >&2
+    echo "    refusing to build Option-B bootchain"
+    die "invalid iBSS/iBEC pair"
   }
 fi
 [[ -f "$WORK/SPTM.im4p" ]] && extract_raw "$WORK/SPTM.im4p" "$WORK/SPTM.raw"
