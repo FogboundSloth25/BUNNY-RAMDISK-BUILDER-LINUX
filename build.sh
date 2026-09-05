@@ -56,6 +56,7 @@ need_cmd curl
 need_cmd jq
 need_cmd python3
 need_cmd ipsw
+[[ -x "$IMG4" ]] || die "missing Linux img4 tool; run ./setup_dependencies.sh"
 
 PY="$(python_bin)"
 
@@ -488,8 +489,15 @@ else
   cp "$WORK/kernelcache.raw" "$WORK/kernelcache.patched.raw"
 fi
 
-"$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/iBEC.im4p" --raw "$WORK/iBEC.patched.raw" --output "$BOOT/iBEC.patched.img4" --im4m "$IM4M"
-"$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/KernelCache.im4p" --raw "$WORK/kernelcache.patched.raw" --output "$BOOT/kernelcache.img4.patched" --im4m "$IM4M" --lzfse
+log "Creating kernel patch diff (kc.bpatch)"
+"$PY" "$ROOT/scripts/kerneldiff.py" "$WORK/kernelcache.raw" "$WORK/kernelcache.patched.raw" "$WORK/kc.bpatch"
+[[ -s "$WORK/kc.bpatch" ]] || die "kernel patch diff is empty"
+PATCH_COUNT="$(grep -Ec '^0x[0-9a-fA-F]+ 0x[0-9a-fA-F]+ 0x[0-9a-fA-F]+' "$WORK/kc.bpatch" || true)"
+(( PATCH_COUNT > 0 )) || die "kernel patch diff contains no byte changes"
+echo "kc.bpatch: $PATCH_COUNT byte patches"
+
+"$IMG4" -i "$WORK/iBEC.patched.raw" -o "$BOOT/iBEC.patched.img4" -M "$IM4M" -A -T ibec
+"$IMG4" -i "$WORK/KernelCache.im4p" -o "$BOOT/kernelcache.img4.patched" -M "$IM4M" -T rkrn -P "$WORK/kc.bpatch" -J
 
 "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/DeviceTree.im4p" --output "$BOOT/devicetree.img4" --im4m "$IM4M"
 "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/RestoreTrustCache.im4p" --output "$BOOT/trustcache.img4" --im4m "$IM4M"
