@@ -126,7 +126,7 @@ APFS_PROGS_STAGE="$(mktemp -d /tmp/bunny-apfsprogs.XXXXXX)"
 cleanup_apfsprogs() { rm -rf "$APFS_PROGS_STAGE"; }
 trap cleanup_apfsprogs EXIT INT TERM
 rsync -a "$APFSPROGS/" "$APFS_PROGS_STAGE/"
-APFS_COMMIT="$(git -C "$APFSPROGS" rev-parse HEAD)"
+APFS_COMMIT="$(git -C "$APFSPROGS" describe --always HEAD | tail -c 9)"
 
 (
   cd "$APFS_PROGS_STAGE/mkapfs"
