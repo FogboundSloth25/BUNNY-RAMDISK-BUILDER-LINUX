@@ -1,8 +1,9 @@
-name: Linux portability
+name: Linux portability and APFS build
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   syntax:
@@ -14,16 +15,17 @@ jobs:
       image: ${{ matrix.distro }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install bash
+      - name: Install shell tooling
         run: |
           if command -v apt-get >/dev/null; then
-            apt-get update && apt-get install -y bash
+            apt-get update
+            apt-get install -y bash coreutils findutils
           elif command -v dnf >/dev/null; then
-            dnf install -y bash
+            dnf install -y bash coreutils findutils
           elif command -v pacman >/dev/null; then
-            pacman -Sy --noconfirm bash
+            pacman -Sy --noconfirm bash coreutils findutils
           fi
-      - name: Syntax check
+      - name: Bash syntax
         run: |
           bash -n env.sh
           bash -n setup_dependencies.sh
@@ -40,3 +42,45 @@ jobs:
       - uses: ludeeus/action-shellcheck@2.0.0
         with:
           scandir: .
+
+  apfs-module:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kernel module build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y             build-essential bc bison flex libssl-dev libelf-dev dwarves             rsync git linux-headers-$(uname -r)
+      - name: Build linux-apfs-rw in a path with no spaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/third_party/linux-apfs-rw"
+          stage="$RUNNER_TEMP/linux-apfs-rw-build"
+          rm -rf "$stage"
+          git clone --depth 1 https://github.com/linux-apfs/linux-apfs-rw.git "$src"
+          mkdir -p "$stage"
+          rsync -a --exclude='.git' "$src/" "$stage/"
+          printf '#define GIT_COMMIT	"ci"
+' > "$stage/version.h"
+          make -C "/lib/modules/$(uname -r)/build" M="$stage" modules
+          test -s "$stage/apfs.ko"
+          modinfo "$stage/apfs.ko" >/dev/null
+          echo "APFS module built successfully:"
+          file "$stage/apfs.ko"
+          sha256sum "$stage/apfs.ko"
+
+  userspace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Python
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-venv python3-pip
+      - name: Validate Python tooling
+        run: |
+          python3 -m venv .ci-venv
+          .ci-venv/bin/pip install --upgrade pip
+          .ci-venv/bin/pip install -r requirements.txt
+          .ci-venv/bin/python -c 'import capstone, pyimg4, usb; print("Python dependencies OK")'
