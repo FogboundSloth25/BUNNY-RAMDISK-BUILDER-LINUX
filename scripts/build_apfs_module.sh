@@ -4,26 +4,29 @@ set -euo pipefail
 SRC="${1:?source directory}"
 OUT="${2:?output module path}"
 KDIR="${KDIR:-/lib/modules/$(uname -r)/build}"
-ROOT="${BUNNY_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-STAGE="${BUNNY_APFS_STAGE:-$ROOT/work/linux-apfs-rw-build}"
 
 [[ -d "$SRC" ]] || { echo "APFS source not found: $SRC" >&2; exit 1; }
 [[ -d "$KDIR" ]] || { echo "Kernel build directory not found: $KDIR" >&2; exit 1; }
 
-case "$STAGE" in
-  *\ *|$'\t'*) echo "APFS staging path contains whitespace: $STAGE" >&2; exit 1 ;;
-esac
+# Kbuild rejects whitespace in KBUILD_EXTMOD. The source checkout may live in
+# a directory such as "~/iPhone XS/...", so stage the module in /tmp instead.
+STAGE="$(mktemp -d /tmp/bunny-apfs-rw-build.XXXXXX)"
+cleanup() {
+  rm -rf "$STAGE"
+}
+trap cleanup EXIT INT TERM
 
-rm -rf "$STAGE"
-mkdir -p "$STAGE"
+command -v rsync >/dev/null 2>&1 || {
+  echo "rsync is required to build linux-apfs-rw" >&2
+  exit 1
+}
+
 rsync -a --exclude='.git' "$SRC/" "$STAGE/"
-
-# linux-apfs-rw/genver.sh expects git metadata. A shallow copy intentionally
-# has none, so provide a deterministic build identifier.
 printf '#define GIT_COMMIT\t"bunny-linux"\n' > "$STAGE/version.h"
 
 echo "==> KDIR=$KDIR"
 echo "==> STAGE=$STAGE"
+
 make -C "$KDIR" M="$STAGE" modules
 
 [[ -s "$STAGE/apfs.ko" ]] || {
