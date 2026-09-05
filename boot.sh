@@ -93,7 +93,7 @@ wait_mode Recovery 120 || die "iPhone did not enter USB Recovery after iBEC"
 show_state "AFTER iBEC GO"
 
 log "Setting display debug background"
-irecovery -c "bgcolor 0 127 127" || true
+irecovery -c "bgcolor 0 0 0" || true
 
 send_fw() {
   local key="$1" f="$BOOT/$1.img4"
@@ -103,37 +103,43 @@ send_fw() {
   irecovery -c firmware
 }
 
-if [[ ! -f "$BOOT/iBSS.patched.raw" ]]; then
-  # Direct iBEC path: upstream sends USB/coprocessor firmware before DT.
-  for key in SPTM TXM AOP ANE AVE ISP GFX SIO; do
-    [[ -s "$BOOT/$key.img4" ]] && send_fw "$key"
-  done
-  log "Sending DeviceTree"
-  irecovery -f "$BOOT/devicetree.img4"
-  irecovery -c devicetree
+# Match the proven iBSS/Option-B sequence used by ICH/BUNNY:
+# SPTM/TXM (when present) -> DeviceTree -> TrustCache -> RestoreRamDisk
+# -> coprocessor firmware -> kernel -> setenvnp boot-args -> bootx.
+if [[ -f "$BOOT/sptm.img4" ]]; then
+  send_fw "sptm"
 fi
+if [[ -f "$BOOT/txm.img4" ]]; then
+  send_fw "txm"
+fi
+
+log "Sending DeviceTree"
+irecovery -f "$BOOT/devicetree.img4"
+irecovery -c devicetree
+show_state "AFTER DEVICETREE"
 
 log "Sending TrustCache"
 irecovery -f "$BOOT/trustcache.img4"
 irecovery -c firmware
+show_state "AFTER TRUSTCACHE"
 
 log "Sending RestoreRamDisk"
 irecovery -f "$BOOT/ramdisk.img4"
 irecovery -c ramdisk
+show_state "AFTER RAMDISK"
 
-# Critical for normal USB enumeration on the iBSS/Option-B path:
-# firmware follows the ramdisk and precedes the kernel, matching ICH/BUNNY.
-if [[ -f "$BOOT/iBSS.patched.raw" ]]; then
-  for key in SPTM TXM AOP ANE AVE ISP GFX SIO; do
-    [[ -s "$BOOT/$key.img4" ]] && send_fw "$key"
-  done
-fi
+# With iBSS/Option-B, firmware is loaded after the ramdisk and before kernel.
+for key in AOP ANE AVE ISP GFX SIO; do
+  [[ -s "$BOOT/$key.img4" ]] && send_fw "$key"
+done
 
 log "Sending KernelCache"
 irecovery -f "$BOOT/kernelcache.img4.patched"
+show_state "AFTER KERNELCACHE UPLOAD"
 
 log "Setting boot args"
-irecovery -c "setenvnp boot-args rd=md0 -v debug=0x14e serial=3 wdt=-1 keepsyms=1" ||   irecovery -c "setenv boot-args rd=md0 -v debug=0x14e serial=3 wdt=-1 keepsyms=1"
+irecovery -c "setenvnp boot-args rd=md0 -v debug=0x14e serial=3 wdt=-1 keepsyms=1" || \
+  irecovery -c "setenv boot-args rd=md0 -v debug=0x14e serial=3 wdt=-1 keepsyms=1"
 irecovery -c "setenv auto-boot false" || true
 
 echo "==> Final boot environment"
