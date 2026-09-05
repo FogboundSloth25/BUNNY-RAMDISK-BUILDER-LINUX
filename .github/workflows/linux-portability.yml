@@ -63,7 +63,7 @@ jobs:
           set -euo pipefail
           src="$RUNNER_TEMP/linux-apfs-rw-src"
           out="$RUNNER_TEMP/apfs.ko"
-          KDIR="$(find /lib/modules -mindepth 2 -maxdepth 2 -type d -name build | head -1)"
+          KDIR="$(find -L /lib/modules -mindepth 2 -maxdepth 2 -name build | head -1)"
           test -d "$KDIR"
           git clone --depth 1 https://github.com/linux-apfs/linux-apfs-rw.git "$src"
           KDIR="$KDIR" bash ./scripts/build_apfs_module.sh "$src" "$out"
