@@ -113,6 +113,13 @@ if [[ -f "$BOOT/txm.img4" ]]; then
   send_fw "txm"
 fi
 
+if [[ -s "$BOOT/sep-firmware.img4" ]]; then
+  log "Sending RestoreSEP"
+  irecovery -f "$BOOT/sep-firmware.img4"
+  irecovery -c rsepfirmware
+  show_state "AFTER RESTORESEP"
+fi
+
 log "Sending DeviceTree"
 irecovery -f "$BOOT/devicetree.img4"
 irecovery -c devicetree
