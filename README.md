@@ -173,3 +173,6 @@ The ramdisk exposes AppleUSBMux only. The host usbmuxd should use initial device
 ### Boot logo
 
 Logo generation automatically detects light-background vs dark-background source artwork. Set `BUNNY_LOGO_INVERT=light` or `dark` to override detection when a custom image needs it.
+
+### SSH entrypoint
+The SSH ramdisk replaces `/usr/local/bin/restored_external` with the repository-owned `ssh_restored_external` shell launcher. The stock Mach-O `/etc/rc.boot` is preserved. The launcher executes the signed/trusted `dropbear.orig` payload on device TCP ports 22 and 44 and prints the `VALIDITY IS THE BEST` banner to `/dev/console`.
