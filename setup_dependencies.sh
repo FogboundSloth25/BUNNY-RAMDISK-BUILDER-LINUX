@@ -22,14 +22,14 @@ case "$ID_LC" in
       python3 python3-venv python3-pip python3-dev \
       build-essential pkg-config autoconf automake libtool gettext cmake \
       libusb-1.0-0-dev libplist-dev libreadline-dev uuid-dev \
-      libssl-dev fuse3 rsync tar sshpass
+      libssl-dev libpng-dev fuse3 rsync tar sshpass
     ;;
   fedora)
     sudo dnf install -y bash ca-certificates curl git jq unzip xz zip golang \
       python3 python3-pip python3-devel gcc gcc-c++ make pkgconf \
       autoconf automake libtool gettext \
       libusb1-devel libplist-devel readline-devel libuuid-devel \
-      openssl-devel fuse3 rsync tar sshpass
+      openssl-devel libpng-devel fuse3 rsync tar sshpass
     ;;
   arch)
     sudo pacman -Sy --needed --noconfirm bash ca-certificates curl git jq unzip xz zip go gettext \
@@ -169,6 +169,18 @@ command -v iproxy >/dev/null 2>&1 && echo "[OK] iproxy" || echo "[WARN] iproxy u
 echo
 echo "Setup complete."
 echo "Run ./status.sh, then ./build.sh --version <version>"
+
+
+log "Building ibootim logo tool"
+IBOOTIM_SRC="$BUNNY_THIRD_PARTY/ibootim"
+if [[ ! -d "$IBOOTIM_SRC/.git" ]]; then
+  rm -rf "$IBOOTIM_SRC"
+  git clone --depth 1 https://github.com/realnp/ibootim.git "$IBOOTIM_SRC"
+fi
+make -C "$IBOOTIM_SRC" -j"$(nproc)"
+[[ -x "$IBOOTIM_SRC/ibootim" ]] || die "ibootim build finished without executable"
+install -m 0755 "$IBOOTIM_SRC/ibootim" "$BUNNY_TOOLS/ibootim"
+"$BUNNY_TOOLS/ibootim" --help >/dev/null 2>&1 || true
 
 echo "==> Building Linux IMG4 patching tool"
 IMG4LIB="$ROOT/third_party/img4lib"
