@@ -557,32 +557,46 @@ PATCH_COUNT="$(grep -Ec '^0x[0-9a-fA-F]+ 0x[0-9a-fA-F]+ 0x[0-9a-fA-F]+' "$WORK/k
 echo "kc.bpatch: $PATCH_COUNT byte patches"
 
 "$IMG4" -i "$WORK/iBEC.patched.raw" -o "$BOOT/iBEC.patched.img4" -M "$IM4M" -A -T ibec
-# Build a real rkrn IM4P from the patched raw kernel, preserving the
-# stock KernelCache properties exactly. Applying a bpatch directly with the
-# img4 CLI is useful for development, but pyimg4 wrapping matches the proven
-# A12/A13 bootchain format and avoids depending on img4 CLI patch semantics.
-"$PY" "$ROOT/scripts/img4_package.py"   --im4p "$WORK/KernelCache.im4p"   --raw "$WORK/kernelcache.patched.raw"   --fourcc rkrn   --lzfse   --output "$BOOT/kernelcache.img4.patched"   --im4m "$IM4M"
+# The proven A12/A13 boot flow does NOT put the physically patched kernel
+# into the rkrn payload. It keeps the stock raw KernelCache and attaches the
+# byte patch list as the "krnl" IMG4 property. iBoot applies that property
+# during the kernel handoff. This is also what the reference SSHRD workflow
+# does with: img4 ... -T rkrn -P kc.bpatch -J.
+#
+# Keeping the payload stock is important: embedding the already-patched kernel
+# AND attaching kc.bpatch would apply every modification twice.
+"$IMG4" -i "$WORK/kernelcache.raw"   -o "$BOOT/kernelcache.img4.patched"   -M "$IM4M"   -T rkrn   -P "$WORK/kc.bpatch"   -J
 
-# Verify the resulting IMG4 contains a decompressible rkrn payload and that
-# its payload is still a Mach-O kernel before declaring the build successful.
-"$PY" - "$BOOT/kernelcache.img4.patched" <<'PY'
+# Validate the exact artifact iBoot will receive: rkrn IM4P + Mach-O payload
+# + a non-empty krnl/bpatch property.
+"$PY" - "$BOOT/kernelcache.img4.patched" "$WORK/kc.bpatch" <<'PY'
 import sys
 from pathlib import Path
 from pyimg4 import IMG4
 
-p = Path(sys.argv[1])
-obj = IMG4(p.read_bytes())
+img4_path = Path(sys.argv[1])
+patch_path = Path(sys.argv[2])
+obj = IMG4(img4_path.read_bytes())
 if not obj.im4p:
     raise SystemExit("kernel IMG4 has no IM4P")
 if obj.im4p.fourcc != "rkrn":
     raise SystemExit(f"kernel IMG4 has wrong fourcc: {obj.im4p.fourcc!r}")
+
 payload = obj.im4p.payload
 if payload.compression:
     payload.decompress()
 data = payload.output().data
-if len(data) < 4 or data[:4] not in (b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf"):
+if len(data) < 4 or data[:4] not in (b"\\xcf\\xfa\\xed\\xfe", b"\\xfe\\xed\\xfa\\xcf"):
     raise SystemExit(f"kernel IMG4 payload is not Mach-O: magic={data[:4].hex()}")
-print(f"kernel IMG4 verified: rkrn, payload={len(data)} bytes, Mach-O")
+
+props = getattr(obj.im4p, "properties", []) or []
+fourccs = [getattr(p, "fourcc", "") for p in props]
+if "krnl" not in fourccs:
+    raise SystemExit(f"kernel IMG4 has no krnl patch property; properties={fourccs!r}")
+if patch_path.stat().st_size == 0:
+    raise SystemExit("kc.bpatch is empty")
+
+print(f"kernel IMG4 verified: rkrn, stock Mach-O payload={len(data)} bytes, krnl property present")
 PY
 
 "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/DeviceTree.im4p" --output "$BOOT/devicetree.img4" --im4m "$IM4M"
