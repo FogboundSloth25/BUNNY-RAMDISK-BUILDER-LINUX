@@ -584,7 +584,9 @@ PATCH_COUNT="$(grep -Ec '^0x[0-9a-fA-F]+ 0x[0-9a-fA-F]+ 0x[0-9a-fA-F]+' "$WORK/k
 (( PATCH_COUNT > 0 )) || die "kernel patch diff contains no byte changes"
 echo "kc.bpatch: $PATCH_COUNT byte patches"
 
-"$IMG4" -i "$WORK/iBEC.patched.raw" -o "$BOOT/iBEC.patched.img4" -M "$IM4M" -A -T ibec
+cp "$WORK/iBEC.patched.raw" "$BOOT/iBEC.patched.raw"
+[[ -s "$BOOT/iBEC.patched.raw" ]] || die "failed to stage raw patched iBEC"
+"$IMG4" -i "$BOOT/iBEC.patched.raw" -o "$BOOT/iBEC.patched.img4" -M "$IM4M" -A -T ibec
 # The reference A12/A13 flow uses img4 -P on the decompressed KernelCache
 # IM4P and emits an rkrn IMG4.  -P applies the kc.bpatch byte changes to the
 # payload during reassembly; it is not a property named "krnl".
