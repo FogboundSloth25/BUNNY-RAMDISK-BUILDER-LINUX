@@ -158,26 +158,53 @@ mkdir -p "$CACHE"
 path_for() { jq -r --arg key "$1" '.[$key] // empty' <<<"$IDENTITY"; }
 
 fetch_member() {
-  local key="$1" p dst
+  local key="$1" p dst tmpdir candidate pattern base
   p="$(path_for "$key")"
   [[ -n "$p" ]] || return 0
   dst="$CACHE/$(basename "$p")"
+
   if [[ ! -s "$dst" ]]; then
     if [[ -n "$LOCAL_IPSW" ]]; then
       "$PY" - "$LOCAL_IPSW" "$p" "$dst" <<'PY'
-import sys,zipfile
+import sys, zipfile
 from pathlib import Path
-ipsw,name,out=map(Path,sys.argv[1:])
+ipsw, name, out = map(Path, sys.argv[1:])
 with zipfile.ZipFile(ipsw) as z:
-    out.write_bytes(z.read(str(name)))
+    try:
+        data = z.read(str(name))
+    except KeyError:
+        raise SystemExit(f"missing IPSW member: {name}")
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_bytes(data)
 PY
     else
-      ipsw extract --remote "$IPSW_URL" --output "$CACHE" --flat --pattern "$p" >/dev/null 2>&1
+      tmpdir="$(mktemp -d /tmp/bunny-component.XXXXXX)"
+      base="$(basename "$p")"
+      pattern="$(printf '%s' "$p" | sed 's/[][\\.^$*+?(){}|]/\\&/g')$"
+      if ! ipsw extract --remote "$IPSW_URL" \
+          --output "$tmpdir" --flat --pattern "$pattern"; then
+        rm -rf "$tmpdir"
+        tmpdir="$(mktemp -d /tmp/bunny-component.XXXXXX)"
+        pattern="$(printf '%s' "$base" | sed 's/[][\\.^$*+?(){}|]/\\&/g')$"
+        if ! ipsw extract --remote "$IPSW_URL" \
+            --output "$tmpdir" --flat --pattern "$pattern"; then
+          rm -rf "$tmpdir"
+          die "ipsw could not fetch $key ($p)"
+        fi
+      fi
+
+      candidate="$(find "$tmpdir" -type f -name "$base" -print -quit)"
+      [[ -s "$candidate" ]] || {
+        rm -rf "$tmpdir"
+        die "remote IPSW extraction produced no $key ($base)"
+      }
+      cp -f "$candidate" "$dst"
+      rm -rf "$tmpdir"
     fi
   fi
-  [[ -s "$dst" ]] || die "failed to fetch $key ($p)"
-}
 
+  [[ -s "$dst" ]] || die "component $key is missing/empty: $dst"
+}
 for key in iBEC KernelCache DeviceTree RestoreRamDisk RestoreTrustCache; do
   fetch_member "$key"
 done
