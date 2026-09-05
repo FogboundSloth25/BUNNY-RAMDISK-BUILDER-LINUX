@@ -225,8 +225,17 @@ inject_apfs() {
   echo "    free before injection: $free_before bytes"
 
   log "Injecting SSH into APFS ramdisk"
-  if ! sudo tar --no-acls --no-xattrs --numeric-owner -xpf "$ssh_tar" -C "$src_mp"; then
-    die "SSH injection failed"
+  local ssh_list="${BUNNY_RESOURCES}/sshtarlist.txt"
+  if [[ -s "$ssh_list" ]]; then
+    # The upstream archive contains build-host locale/terminfo and other
+    # dependencies which do not belong in the target ramdisk. Extract only
+    # the curated payload list; archive paths are work/sshtar/<target>.
+    if ! sudo tar --no-acls --no-xattrs --no-same-owner --numeric-owner \
+        --strip-components=2 -xzf "$ssh_tar" -C "$src_mp" -T "$ssh_list"; then
+      die "SSH payload injection failed using sshtarlist.txt"
+    fi
+  else
+    die "missing SSH payload allowlist: $ssh_list"
   fi
   sync
 
