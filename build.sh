@@ -310,9 +310,10 @@ BOOT="$BUNNY_BOOTCHAIN/$MODEL-$VERSION-$BUILD-ramdisk"
 rm -rf "$WORK" "$BOOT"
 mkdir -p "$WORK" "$BOOT"
 
-for key in iBEC KernelCache DeviceTree RestoreRamDisk RestoreTrustCache; do
+for key in iBEC KernelCache DeviceTree RestoreTrustCache; do
   cp "$CACHE/$(basename "$(path_for "$key")")" "$WORK/$key.im4p"
 done
+cp "$CACHE/$(basename "$(path_for RestoreRamDisk)")" "$WORK/RestoreRamDisk.dmg"
 (( USE_IBSS )) && cp "$CACHE/$(basename "$(path_for iBSS)")" "$WORK/iBSS.im4p"
 
 for key in AOP ANE AVE ISP GFX SIO SPTM TXM; do
@@ -436,13 +437,25 @@ if (( INJECT_SSH )); then
   if [[ ! -s "$SSH_TAR" ]]; then
     curl -fsSL https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/ssh.tar.gz -o "$SSH_TAR"
   fi
-  log "Injecting SSH into a copied ramdisk"
-  # RestoreRamDisk.im4p contains the raw DMG payload.
-  extract_raw "$WORK/RestoreRamDisk.im4p" "$WORK/ramdisk-stock.dmg"
-  inject_ssh_ramdisk "$WORK/ramdisk-stock.dmg" "$SSH_TAR" "$WORK/ramdisk-injected.dmg"
-  "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/RestoreRamDisk.im4p" --raw "$WORK/ramdisk-injected.dmg" --output "$BOOT/ramdisk.img4" --im4m "$IM4M" --fourcc rdsk
+  [[ -s "$SSH_TAR" ]] || die "SSH payload is empty"
+
+  log "Injecting SSH into RestoreRamDisk.dmg"
+  inject_ssh_ramdisk "$WORK/RestoreRamDisk.dmg" "$SSH_TAR" "$WORK/ramdisk-injected.dmg"
+  [[ -s "$WORK/ramdisk-injected.dmg" ]] || die "ramdisk injection produced no image"
+
+  "$PY" "$ROOT/scripts/img4_package.py" \
+    --raw "$WORK/ramdisk-injected.dmg" \
+    --output "$BOOT/ramdisk.img4" \
+    --im4m "$IM4M" \
+    --fourcc rdsk \
+    --description RestoreRamDisk
 else
-  "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/RestoreRamDisk.im4p" --output "$BOOT/ramdisk.img4" --im4m "$IM4M"
+  "$PY" "$ROOT/scripts/img4_package.py" \
+    --raw "$WORK/RestoreRamDisk.dmg" \
+    --output "$BOOT/ramdisk.img4" \
+    --im4m "$IM4M" \
+    --fourcc rdsk \
+    --description RestoreRamDisk
 fi
 
 if (( WITH_FW )); then
