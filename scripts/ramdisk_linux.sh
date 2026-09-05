@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-source "$ROOT/env.sh"
+# This file is sourced by build.sh. Do not derive the project root from $0:
+# when sourced, $0 belongs to the caller (build.sh), not this file.
+ROOT="${BUNNY_ROOT:?BUNNY_ROOT must be set by env.sh}"
+source /dev/null
 
 magic() {
   "$ROOT/.venv/bin/python" - "$1" <<'PY'
@@ -45,7 +47,6 @@ inject_apfs() {
   rm -f "$src" "$out"
   cp --reflink=auto --sparse=always "$stock" "$src"
   truncate -s "$target" "$out"
-
   sudo "$BUNNY_TOOLS/mkapfs" "$out"
 
   mkdir -p "$src_mp" "$dst_mp"
@@ -64,7 +65,7 @@ inject_apfs() {
   (cd "$src_mp" && sudo tar --xattrs --acls --numeric-owner -cpf - .) |
     (cd "$dst_mp" && sudo tar --xattrs --acls --numeric-owner -xpf -)
 
-  log "Injecting SSH payload"
+  log "Injecting SSH"
   sudo tar --xattrs --acls --numeric-owner -xpf "$ssh_tar" -C "$dst_mp"
   sync
 }
