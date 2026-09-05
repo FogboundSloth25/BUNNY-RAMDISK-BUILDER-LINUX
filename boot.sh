@@ -145,17 +145,46 @@ irecovery -f "$BOOT/kernelcache.img4.patched"
 show_state "AFTER KERNELCACHE UPLOAD"
 
 log "Setting boot args"
-irecovery -c "setenvnp boot-args rd=md0 -v debug=0x14e serial=3 wdt=-1 keepsyms=1" || \
-  irecovery -c "setenv boot-args rd=md0 -v debug=0x14e serial=3 wdt=-1 keepsyms=1"
-irecovery -c "setenv auto-boot false" || true
+BOOTARGS="${BUNNY_BOOTARGS:-rd=md0 -v debug=0x14e serial=3 wdt=-1 keepsyms=1}"
+irecovery -c "setenvnp boot-args $BOOTARGS" || \
+  irecovery -c "setenv boot-args $BOOTARGS"
+# Do not force auto-boot=false here: an explicit bootx is the requested transition.
 
 echo "==> Final boot environment"
 irecovery -q 2>&1 || true
 
 log "Booting patched kernel"
+# bootx should make Recovery disappear. Merely sending the command while
+# irecovery still reports Recovery is not proof that the kernel was accepted.
 irecovery -c bootx
-sleep 0.5
-echo "==> Device state after bootx"
-irecovery -q 2>&1 || true
 
-echo "Boot command sent. Check the display for verbose output, then run ./ssh.sh when SSH is available."
+log "Waiting for Recovery USB disconnect after bootx"
+disconnect_wait_ms="${BUNNY_BOOT_DISCONNECT_WAIT_MS:-15000}"
+elapsed=0
+while (( elapsed < disconnect_wait_ms )); do
+  if ! irecovery -q >/dev/null 2>&1; then
+    echo "==> Recovery USB disconnected: bootx handed off"
+    break
+  fi
+  sleep 0.1
+  elapsed=$((elapsed + 100))
+done
+
+if (( elapsed >= disconnect_wait_ms )); then
+  echo "[x] Device never left USB Recovery after bootx." >&2
+  echo "    This means the host still sees iBoot Recovery; the kernel/ramdisk did not reach a normal boot state." >&2
+  irecovery -q 2>&1 || true
+  exit 1
+fi
+
+echo "==> Waiting for normal USB/usbmuxd or ramdisk SSH (up to 20s)"
+for _ in {1..200}; do
+  if command -v idevice_id >/dev/null 2>&1 && idevice_id -l 2>/dev/null | grep -q .; then
+    echo "==> Device appeared to usbmuxd"
+    exit 0
+  fi
+  sleep 0.1
+done
+
+echo "==> Recovery interface did not reappear as usbmuxd within 20s."
+echo "    Check ./ssh.sh and USB logs; the important result is that Recovery DID disconnect."
