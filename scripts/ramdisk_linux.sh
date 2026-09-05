@@ -241,6 +241,17 @@ inject_apfs() {
   log "Mounting new APFS ramdisk"
   mount_image "$out" "$dst_mp" rw apfs 0
 
+  local available
+  available="$(df -B1 --output=avail "$dst_mp" | tail -n1 | tr -d '[:space:]')"
+  [[ "$available" =~ ^[0-9]+$ ]] || die "could not determine free space on new APFS ramdisk"
+  echo "    available: $available bytes"
+
+  if (( available < size / 2 )); then
+    echo "[x] New APFS ramdisk has unexpectedly little free space." >&2
+    df -h "$dst_mp" >&2 || true
+    die "APFS destination capacity is insufficient"
+  fi
+
   log "Copying stock APFS ramdisk"
   # linux-apfs-rw currently does not implement POSIX ACL operations. Preserve
   # the filesystem tree, modes, owners and symlinks, but do not make ACL
@@ -253,6 +264,11 @@ inject_apfs() {
   log "Injecting SSH"
   sudo tar --no-acls --xattrs --numeric-owner -xpf "$ssh_tar" -C "$dst_mp"
   sync
+
+  if ! sudo find "$dst_mp" -type f \( -name ssh -o -name dropbear -o -name sshd \) -print -quit | grep -q .; then
+    echo "[x] SSH payload was extracted, but no SSH executable was found in the ramdisk." >&2
+    die "SSH payload verification failed"
+  fi
 
   [[ -s "${dst_mp}.bunny-loopdev" ]] || die "APFS destination loop device missing"
 }
