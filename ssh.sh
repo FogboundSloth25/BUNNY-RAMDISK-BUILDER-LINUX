@@ -85,18 +85,25 @@ start_usbmuxd() {
   log "Bunny usbmuxd isolated from desktop lockdownd probes"
 }
 
-wait_usb_recovery() {
+wait_for_ramdisk_usb() {
+  # Do not run irecovery -q here. Once the ramdisk is active, that probe can
+  # block or wait for a standard Apple Recovery endpoint that this ramdisk
+  # intentionally does not expose. SSH must not depend on it.
+  return 0
+}
+
+wait_for_ssh_mux() {
+  local socket="$1"
   for _ in {1..50}; do
-    if irecovery -q 2>/dev/null | grep -q "MODE: Recovery"; then
-      return 0
-    fi
+    [[ -S "$socket" ]] && return 0
     sleep 0.1
   done
-  return 1
+  die "private usbmuxd socket did not become ready: $socket"
 }
 
 start_usbmuxd
-wait_usb_recovery || true
+wait_for_ramdisk_usb
+wait_for_ssh_mux "$USBMUXD_PRIVATE_SOCKET"
 
 LOCAL_PORT="${BUNNY_SSH_LOCAL_PORT:-2222}"
 DEVICE_PORT="${BUNNY_SSH_DEVICE_PORT:-44}"
@@ -106,11 +113,32 @@ PASSWORD="${BUNNY_SSH_PASSWORD:-alpine}"
 pattern="iproxy .*${LOCAL_PORT} .*${DEVICE_PORT}"
 if ! pgrep -f "$pattern" >/dev/null 2>&1; then
   log "Starting iproxy $LOCAL_PORT -> $DEVICE_PORT (Dropbear)"
-  env USBMUXD_SOCKET_ADDRESS="$USBMUXD_SOCKET_ADDRESS" iproxy "$LOCAL_PORT" "$DEVICE_PORT" >/tmp/bunny-iproxy.log 2>&1 &
-  echo $! > "$ROOT/.iproxy.pid"
-  sleep 1
-fi
+  env USBMUXD_SOCKET_ADDRESS="$USBMUXD_SOCKET_ADDRESS" \
+    iproxy "${LOCAL_PORT}:${DEVICE_PORT}" >/tmp/bunny-iproxy.log 2>&1 &
+  IPROXY_PID=$!
+  echo "$IPROXY_PID" > "$ROOT/.iproxy.pid"
 
+  # iproxy may start before usbmuxd has enumerated the ramdisk. Fail with its
+  # real log instead of leaving the user waiting forever.
+  READY=0
+  for _ in {1..50}; do
+    if ! kill -0 "$IPROXY_PID" 2>/dev/null; then
+      echo "[x] iproxy exited unexpectedly:" >&2
+      cat /tmp/bunny-iproxy.log >&2 || true
+      exit 1
+    fi
+    if command -v nc >/dev/null 2>&1 && nc -z 127.0.0.1 "$LOCAL_PORT" >/dev/null 2>&1; then
+      READY=1
+      break
+    fi
+    sleep 0.2
+  done
+  (( READY )) || {
+    echo "[x] iproxy did not open local port $LOCAL_PORT" >&2
+    cat /tmp/bunny-iproxy.log >&2 || true
+    exit 1
+  }
+fi
 echo "SSH: $USER_NAME@127.0.0.1:$LOCAL_PORT (device port $DEVICE_PORT)"
 if command -v sshpass >/dev/null 2>&1; then
   SSHPASS="$PASSWORD" sshpass -e ssh \
