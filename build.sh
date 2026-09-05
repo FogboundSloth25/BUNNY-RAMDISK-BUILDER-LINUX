@@ -713,16 +713,14 @@ if (( INJECT_SSH )); then
   [[ -s "$SSH_LIST" ]] || die "SSH payload allowlist is empty"
 
   BUNNY_RESTORED_EXTERNAL="$BUNNY_RESOURCES/restored_external"
-  # Use the exact upstream ICH A12/A13 restored_external payload. It is a
-  # Mach-O executable, not a shell script; do not download/replace it.
+  # For the SSH ramdisk this intentionally replaces Apple's restore daemon
+  # with a POSIX restored_external launcher, as used by SSHRD-style ramdisks.
+  # Keep the check semantic: this file must be a shell script, and it is NOT
+  # part of the Mach-O trustcache set.
   install -m 0755 "$ROOT/resources/ssh_restored_external" "$BUNNY_RESTORED_EXTERNAL"
-  # The ICH restored_external is a Mach-O inetd-style launcher. Verify its
-  # magic before putting it into the APFS image so a shell script can never
-  # silently replace the required binary again.
-  magic="$(od -An -tx1 -N4 "$BUNNY_RESTORED_EXTERNAL" | tr -d " [:space:]")"
-  [[ "$magic" == "cffaedfe" ]] || die "restored_external is not the upstream arm64 Mach-O (magic=$magic)"
   [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "restored_external is empty"
-  head -c 2 "$BUNNY_RESTORED_EXTERNAL" | grep -Fxq "#!" || die "SSH restored_external is not a POSIX script"
+  head -c 2 "$BUNNY_RESTORED_EXTERNAL" | grep -Fxq "#!" ||
+    die "SSH restored_external must be a POSIX script"
   echo "SSH restored_external: POSIX launcher (Dropbear :44)"
 
   SSH_STAGE="$WORK/ssh-stage"
