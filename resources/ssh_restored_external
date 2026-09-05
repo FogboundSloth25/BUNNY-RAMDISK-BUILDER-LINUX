@@ -21,8 +21,7 @@ echo "================================================================" >/dev/co
 mkdir -p /var/run /tmp /var/root/.ssh /etc/dropbear 2>/dev/null || true
 chmod 700 /var/root/.ssh /etc/dropbear 2>/dev/null || true
 
-DROPBEAR=/usr/local/bin/dropbear.orig
-[ -x "$DROPBEAR" ] || DROPBEAR=/usr/local/bin/dropbear
+DROPBEAR=/usr/local/bin/dropbear
 
 if [ ! -x "$DROPBEAR" ]; then
     echo "BUNNY SSH: ERROR: no Dropbear executable" >/dev/console 2>&1
