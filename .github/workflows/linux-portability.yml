@@ -50,7 +50,7 @@ jobs:
           shellcheck --version
           shellcheck -S error -x \
             env.sh setup_dependencies.sh build.sh boot.sh ssh.sh status.sh \
-            scripts/ramdisk_linux.sh scripts/build_apfs_module.sh scripts/make_logo.sh
+            scripts/ramdisk_linux.sh scripts/build_apfs_module.sh scripts/make_logo.sh scripts/finalize_iboot.py
 
   apfs:
     runs-on: ubuntu-latest
