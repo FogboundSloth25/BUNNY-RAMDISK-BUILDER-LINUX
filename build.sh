@@ -704,6 +704,12 @@ if (( INJECT_SSH )); then
   prepare_ssh_tree "$SSH_TAR" "$SSH_STAGE"
   verify_ssh_allowlist "$SSH_STAGE" "$SSH_LIST"
 
+  # The ICH restored_external replaces the archive copy. Put the exact final
+  # bytes into the trustcache staging tree before collecting CDHashes.
+  if [[ -s "$BUNNY_RESTORED_EXTERNAL" ]]; then
+    install -m 0755 "$BUNNY_RESTORED_EXTERNAL" "$SSH_STAGE/usr/local/bin/restored_external"
+  fi
+
   SSH_FILES=()
   SSH_FILE_COUNT=0
   while IFS= read -r entry || [[ -n "$entry" ]]; do
