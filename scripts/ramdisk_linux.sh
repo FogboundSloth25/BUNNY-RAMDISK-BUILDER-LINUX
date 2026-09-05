@@ -252,7 +252,7 @@ prepare_ssh_tree() {
     die "SSH archive does not contain one or more allowlisted files"
   fi
 
-  sudo tar -xzf "$ssh_tar"     -C "$out"     --verbatim-files-from     --no-same-owner     --no-acls     --no-xattrs     --numeric-owner     --no-overwrite-dir     -T "$tar_list" ||
+  tar -xzf "$ssh_tar"     -C "$out"     --verbatim-files-from     --no-same-owner     --no-acls     --no-xattrs     --numeric-owner     --no-overwrite-dir     -T "$tar_list" ||
     die "could not selectively extract SSH payload"
 
   # The archive may use project-root paths (work/sshtar/...). Normalize the
