@@ -1,138 +1,3 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-ROOT="$(cd "$(dirname "$0")" && pwd)"
-source "$ROOT/env.sh"
-
-BOOT="${1:-}"
-if [[ -z "$BOOT" ]]; then
-  [[ -n "$LAST_BOOTCHAIN" ]] || die "No previous bootchain"
-  BOOT="$BUNNY_BOOTCHAIN/$LAST_BOOTCHAIN"
-fi
-[[ -d "$BOOT" ]] || die "bootchain not found: $BOOT"
-
-need_cmd irecovery
-need_cmd usbliter8ctl
-
-require_file() {
-  local f="$1"
-  [[ -s "$f" ]] || die "required bootchain component missing: $f"
-}
-
-show_state() {
-  local label="$1"
-  echo
-  echo "===== $label ====="
-  irecovery -q 2>&1 || true
-}
-wait_until_mode_changes() {
-  local before="$1"
-  local timeout_ms="${2:-8000}"
-  local elapsed=0
-  local info mode
-  while (( elapsed < timeout_ms )); do
-    info="$(irecovery -q 2>/dev/null || true)"
-    mode="$(awk -F': ' '$1 == "MODE" {print $2; exit}' <<<"$info")"
-    if [[ -n "$mode" && "$mode" != "$before" ]]; then
-      echo "==> Mode changed: $before -> $mode"
-      return 0
-    fi
-    sleep 0.1
-    elapsed=$((elapsed + 100))
-  done
-  return 1
-}
-
-wait_device() {
-  local timeout_ms="${1:-10000}"
-  local elapsed=0
-  while (( elapsed < timeout_ms )); do
-    if irecovery -q >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 0.1
-    elapsed=$((elapsed + 100))
-  done
-  return 1
-}
-
-wait_mode() {
-  local expected="$1"
-  local timeout_ms="${2:-10000}"
-  local elapsed=0
-  local info mode
-  while (( elapsed < timeout_ms )); do
-    info="$(irecovery -q 2>/dev/null || true)"
-    mode="$(awk -F': ' '$1 == "MODE" {print $2; exit}' <<<"$info")"
-    [[ "$mode" == "$expected" ]] && return 0
-    sleep 0.1
-    elapsed=$((elapsed + 100))
-  done
-  return 1
-}
-
-require_file "$BOOT/iBSS.patched.raw"
-require_file "$BOOT/iBEC.patched.img4"
-require_file "$BOOT/devicetree.img4"
-require_file "$BOOT/trustcache.img4"
-require_file "$BOOT/ramdisk.img4"
-require_file "$BOOT/kernelcache.img4.patched"
-require_file "$BOOT/chain.info"
-
-USE_SEP="${BUNNY_USE_SEP:--1}"
-USE_LOGO=1
-while (($#)); do
-  case "$1" in
-    --sep) USE_SEP=1; shift ;;
-    --no-sep) USE_SEP=0; shift ;;
-    --no-logo) USE_LOGO=0; shift ;;
-    --logo) USE_LOGO=1; shift ;;
-    *) die "unknown option: $1" ;;
-  esac
-done
-
-log "Loading patched iBSS"
-show_state "BEFORE iBSS"
-usbliter8ctl boot "$BOOT/iBSS.patched.raw"
-wait_mode Recovery 120 || die "iPhone did not enter USB Recovery after iBSS"
-show_state "AFTER iBSS"
-
-log "Sending patched iBEC"
-irecovery -f "$BOOT/iBEC.patched.img4"
-show_state "AFTER iBEC UPLOAD"
-log "Starting patched iBEC"
-irecovery -c go
-wait_mode Recovery 120 || die "iPhone did not enter USB Recovery after iBEC"
-show_state "AFTER iBEC GO"
-
-log "Setting display debug background"
-irecovery -c "bgcolor 0 0 0" || true
-
-# Show the project boot logo while the kernel/ramdisk is being prepared.
-# build.sh normally embeds it as bootchain/logo.img4; if an older bootchain
-# lacks it, regenerate it directly from the repository-root logo.jpg.
-if (( USE_LOGO )); then
-  if [[ ! -s "$BOOT/logo.img4" && -f "$ROOT/logo.jpg" ]]; then
-    log "Building missing boot logo from logo.jpg"
-    "$BASH" "$ROOT/scripts/make_logo.sh" "$ROOT/logo.jpg" --out "$BOOT/logo.img4"
-  fi
-  require_file "$BOOT/logo.img4"
-  log "Showing project boot logo"
-  echo "    logo: $BOOT/logo.img4 ($(stat -c %s "$BOOT/logo.img4") bytes)"
-  irecovery -f "$BOOT/logo.img4"
-  # Standard RestoreLogo flow uses setpicture 4. Keep legacy indices only as fallbacks.
-  if irecovery -c "setpicture 4" || irecovery -c "setpicture 1" || irecovery -c "setpicture 0" || irecovery -c "setpicture"; then
-    echo "==> setpicture accepted"
-    # setpicture selects the uploaded image; bgcolor forces iBoot to refresh the LCD.
-    irecovery -c "bgcolor 0 0 0" || die "logo selected but bgcolor refresh failed"
-    sleep "${BUNNY_LOGO_HOLD_SECS:-3}"
-  else
-    echo "[!] all setpicture variants failed; continuing without logo" >&2
-  fi
-else
-  echo "==> Project boot logo disabled (--no-logo)"
-fi
-
 send_fw() {
   local key="$1" f="$BOOT/$1.img4"
   [[ -s "$f" ]] || return 0
@@ -141,17 +6,8 @@ send_fw() {
   irecovery -c firmware
 }
 
-# Match the proven iBSS/Option-B sequence used by ICH/BUNNY:
-# SPTM/TXM (when present) -> DeviceTree -> TrustCache -> RestoreRamDisk
-# -> coprocessor firmware -> kernel -> setenvnp boot-args -> bootx.
-if [[ -f "$BOOT/sptm.img4" ]]; then
-  send_fw "sptm"
-fi
-if [[ -f "$BOOT/txm.img4" ]]; then
-  send_fw "txm"
-fi
-
 if (( USE_SEP < 0 )); then
+
   if [[ -s "$BOOT/sep-firmware.img4" ]]; then USE_SEP=1; else USE_SEP=0; fi
 fi
 if (( USE_SEP )); then
@@ -179,10 +35,13 @@ irecovery -f "$BOOT/ramdisk.img4"
 irecovery -c ramdisk
 show_state "AFTER RAMDISK"
 
-# With iBSS/Option-B, firmware is loaded after the ramdisk and before kernel.
-for key in AOP ANE AVE ISP GFX SIO; do
-  [[ -s "$BOOT/$key.img4" ]] && send_fw "$key"
-done
+# Option-B / iBSS path loads USB firmware after the ramdisk, matching the
+# upstream usbliter8ra1n sequence.
+if [[ -s "$BOOT/iBSS.patched.raw" ]]; then
+  for key in sptm txm AOP ANE AVE ISP GFX SIO; do
+    [[ -s "$BOOT/$key.img4" ]] && send_fw "$key"
+  done
+fi
 
 log "Sending KernelCache"
 irecovery -f "$BOOT/kernelcache.img4.patched"
