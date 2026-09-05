@@ -112,10 +112,20 @@ bash "$ROOT/scripts/build_apfs_module.sh" "$APFS_SRC" "$APFS_SRC/apfs.ko"
 log "Building mkapfs"
 APFSPROGS="$BUNNY_THIRD_PARTY/apfsprogs"
 [[ -d "$APFSPROGS" ]] || git clone --depth 1 https://github.com/linux-apfs/apfsprogs.git "$APFSPROGS"
-if [[ ! -x "$BUNNY_TOOLS/mkapfs" ]]; then
-  make -C "$APFSPROGS/mkapfs" -j"$(nproc)"
-  install -m 0755 "$APFSPROGS/mkapfs/mkapfs" "$BUNNY_TOOLS/mkapfs"
-fi
+
+APFS_PROGS_STAGE="$(mktemp -d /tmp/bunny-apfsprogs.XXXXXX)"
+cleanup_apfsprogs() { rm -rf "$APFS_PROGS_STAGE"; }
+trap cleanup_apfsprogs EXIT INT TERM
+rsync -a --exclude='.git' "$APFSPROGS/" "$APFS_PROGS_STAGE/"
+
+(
+  cd "$APFS_PROGS_STAGE/mkapfs"
+  printf '#define GIT_COMMIT\t"bunny-linux"\n' > version.h
+  make -j"$(nproc)"
+)
+
+[[ -x "$APFS_PROGS_STAGE/mkapfs/mkapfs" ]] || die "mkapfs build finished without executable"
+install -m 0755 "$APFS_PROGS_STAGE/mkapfs/mkapfs" "$BUNNY_TOOLS/mkapfs"
 
 log "Fetching default A12/A13 IM4M resources"
 curl -fsSL https://raw.githubusercontent.com/strawhatdev01/Strawhat-Ramdisk/main/resources/IM4M_0x8020 -o "$BUNNY_RESOURCES/IM4M_0x8020"
