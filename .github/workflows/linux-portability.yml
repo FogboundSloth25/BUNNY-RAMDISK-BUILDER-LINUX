@@ -34,6 +34,7 @@ jobs:
           bash -n status.sh
           bash -n scripts/ramdisk_linux.sh
           bash -n scripts/build_apfs_module.sh
+          bash -n scripts/make_logo.sh
 
   shellcheck:
     runs-on: ubuntu-latest
@@ -48,7 +49,7 @@ jobs:
           shellcheck --version
           shellcheck -S error -x \
             env.sh setup_dependencies.sh build.sh boot.sh ssh.sh status.sh \
-            scripts/ramdisk_linux.sh scripts/build_apfs_module.sh
+            scripts/ramdisk_linux.sh scripts/build_apfs_module.sh scripts/make_logo.sh
 
   apfs:
     runs-on: ubuntu-latest
