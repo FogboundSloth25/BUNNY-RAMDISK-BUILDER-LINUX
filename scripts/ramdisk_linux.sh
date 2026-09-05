@@ -205,76 +205,46 @@ inject_apfs() {
   local stock="$1" ssh_tar="$2" out="$3" stock_offset="$4"
   load_apfs
 
-  local size target src_mp dst_mp src
-  size="$(stat -c %s "$stock")"
-
-  # idevicerestore advertises a 0x20000000 (512 MiB) RestoreRamDisk
-  # workspace for this generation. The compressed IMG4 payload is much
-  # smaller, so sizing a new APFS filesystem from stat(1) + 128 MiB can
-  # under-allocate the filesystem badly. Use the restore ramdisk capacity
-  # as the deterministic destination size.
-  target=$((0x20000000))
-  if (( target <= size )); then
-    target=$((size + 64 * 1024 * 1024))
-  fi
-
-  src="$ROOT/work/ramdisk-source.$$"
+  local src_mp src size free_before free_after
   src_mp="$ROOT/work/apfs-src.$$"
-  dst_mp="$ROOT/work/apfs-dst.$$"
-  rm -f "$src" "$out"
-  cp --reflink=auto --sparse=always "$stock" "$src"
-  truncate -s "$target" "$out"
-  sudo "$BUNNY_TOOLS/mkapfs" "$out"
+  rm -f "$out"
+  mkdir -p "$src_mp"
 
-  mkdir -p "$src_mp" "$dst_mp"
-  cleanup() {
-    unmount_image "$dst_mp"
-    unmount_image "$src_mp"
-    rm -f "$src"
-    rmdir "$src_mp" "$dst_mp" 2>/dev/null || true
-  }
-  trap cleanup RETURN
+  # Do not reconstruct an Apple APFS ramdisk with tar. The filesystem contains
+  # sparse/cloned extents and a large firmware tree; copying it file-by-file
+  # can require several times the on-disk image size. Copy the original image
+  # byte-for-byte, then modify the APFS volume in place.
+  cp --reflink=auto --sparse=always "$stock" "$out"
+  size="$(stat -c %s "$out")"
+  echo "    APFS image size: $size bytes"
 
-  log "Mounting stock APFS ramdisk (offset=$stock_offset)"
-  mount_image "$src" "$src_mp" ro apfs "$stock_offset"
+  mount_image "$out" "$src_mp" rw apfs "$stock_offset"
 
-  log "Mounting new APFS ramdisk"
-  mount_image "$out" "$dst_mp" rw apfs 0
+  free_before="$(df -B1 --output=avail "$src_mp" | tail -n1 | tr -d '[:space:]')"
+  [[ "$free_before" =~ ^[0-9]+$ ]] || die "could not determine APFS free space"
+  echo "    free before injection: $free_before bytes"
 
-  local available
-  available="$(df -B1 --output=avail "$dst_mp" | tail -n1 | tr -d '[:space:]')"
-  [[ "$available" =~ ^[0-9]+$ ]] || die "could not determine free space on new APFS ramdisk"
-  echo "    available: $available bytes"
-
-  if (( available < size / 2 )); then
-    echo "[x] New APFS ramdisk has unexpectedly little free space." >&2
-    df -h "$dst_mp" >&2 || true
-    die "APFS destination capacity is insufficient"
+  log "Injecting SSH into APFS ramdisk"
+  if ! sudo tar --no-acls --no-xattrs --numeric-owner -xpf "$ssh_tar" -C "$src_mp"; then
+    die "SSH injection failed"
   fi
-
-  log "Copying stock APFS ramdisk"
-  # Do not copy xattrs/ACLs through linux-apfs-rw. The driver can report
-  # oversized/unsupported xattr lists (E2BIG) and reproducing them is neither
-  # required for the builder's injected ramdisk nor reliable on Linux.
-  if ! (cd "$src_mp" && sudo tar --sparse --no-acls --no-xattrs --numeric-owner -cpf - .) |
-     (cd "$dst_mp" && sudo tar --sparse --no-acls --no-xattrs --numeric-owner -xpf -); then
-    die "failed to copy stock APFS ramdisk"
-  fi
-
-  available="$(df -B1 --output=avail "$dst_mp" | tail -n1 | tr -d '[:space:]')"
-  echo "    available after copy: $available bytes"
-  [[ "$available" =~ ^[0-9]+$ ]] || die "could not determine APFS free space after copy"
-
-  log "Injecting SSH"
-  sudo tar --sparse --no-acls --no-xattrs --numeric-owner -xpf "$ssh_tar" -C "$dst_mp"
   sync
 
-  if ! sudo find "$dst_mp" -type f \( -name ssh -o -name dropbear -o -name sshd \) -print -quit | grep -q .; then
-    echo "[x] SSH payload was extracted, but no SSH executable was found in the ramdisk." >&2
-    die "SSH payload verification failed"
+  free_after="$(df -B1 --output=avail "$src_mp" | tail -n1 | tr -d '[:space:]')"
+  [[ "$free_after" =~ ^[0-9]+$ ]] || die "could not determine APFS free space after injection"
+  echo "    free after injection: $free_after bytes"
+
+  if (( free_after >= free_before )); then
+    echo "[x] APFS free space did not decrease after SSH injection." >&2
+    die "SSH injection verification failed"
   fi
 
-  [[ -s "${dst_mp}.bunny-loopdev" ]] || die "APFS destination loop device missing"
+  if ! sudo find "$src_mp" -type f \( -name ssh -o -name dropbear -o -name sshd \) -print -quit | grep -q .; then
+    die "SSH payload verification failed: no SSH executable found"
+  fi
+
+  unmount_image "$src_mp"
+  rmdir "$src_mp" 2>/dev/null || true
 }
 
 inject_hfsplus() {
