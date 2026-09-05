@@ -12,26 +12,31 @@ fi
 need_cmd irecovery
 
 have_cmd usbliter8ctl || true
-if have_cmd usbliter8ctl && [[ -f "$BOOT/iBSS.patched.raw" ]]; then
-  log "Loading patched iBSS"
-  usbliter8ctl boot "$BOOT/iBSS.patched.raw"
-  sleep 2
-fi
 
+# libirecovery reconnects quickly during DFU/iBEC transitions. Poll at 100 ms
 wait_device() {
-  for _ in $(seq 1 40); do
-    irecovery -q >/dev/null 2>&1 && return 0
-    sleep 1
+  local timeout_ms="${1:-10000}"
+  local elapsed=0
+  while (( elapsed < timeout_ms )); do
+    if irecovery -q >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+    elapsed=$((elapsed + 100)
   done
   return 1
 }
 
-wait_device || die "iPhone not visible through libirecovery"
+if have_cmd usbliter8ctl && [[ -f "$BOOT/iBSS.patched.raw" ]]; then
+  log "Loading patched iBSS"
+  usbliter8ctl boot "$BOOT/iBSS.patched.raw"
+  wait_device 5000 || die "iPhone did not reappear after iBSS"
+fi
+
+wait_device 5000 || die "iPhone not visible through libirecovery"
 log "Sending patched iBEC"
 irecovery -f "$BOOT/iBEC.patched.img4"
-sleep 2
-wait_device || die "iPhone did not reappear after iBEC"
-sleep 1
+wait_device 8000 || die "iPhone did not reappear after iBEC"
 
 send_if_present() {
   local f="$1"
