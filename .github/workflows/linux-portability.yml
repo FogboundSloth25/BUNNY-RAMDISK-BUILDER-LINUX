@@ -43,16 +43,15 @@ jobs:
         with:
           scandir: .
 
-  apfs-module:
+  apfs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install kernel module build dependencies
+      - name: Install APFS build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev dwarves rsync git linux-headers-generic
-      - name: Build linux-apfs-rw with shared builder
-        shell: bash
+      - name: Build linux-apfs-rw
         run: |
           set -euo pipefail
           src="$RUNNER_TEMP/linux-apfs-rw-src"
@@ -60,11 +59,22 @@ jobs:
           kdir="$(find /lib/modules -mindepth 2 -maxdepth 2 -type d -name build | head -1)"
           test -n "$kdir"
           git clone --depth 1 https://github.com/linux-apfs/linux-apfs-rw.git "$src"
-          KDIR="$kdir" ./scripts/build_apfs_module.sh "$src" "$out"
+          KDIR="$kdir" bash ./scripts/build_apfs_module.sh "$src" "$out"
           test -s "$out"
           modinfo "$out" >/dev/null
-          file "$out"
-          sha256sum "$out"
+      - name: Build mkapfs
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/apfsprogs"
+          stage="$RUNNER_TEMP/apfsprogs-build"
+          git clone --depth 1 https://github.com/linux-apfs/apfsprogs.git "$src"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          rsync -a --exclude='.git' "$src/" "$stage/"
+          printf '#define GIT_COMMIT\t"ci"\n' > "$stage/mkapfs/version.h"
+          make -C "$stage/mkapfs" -j"$(nproc)"
+          test -x "$stage/mkapfs/mkapfs"
+          "$stage/mkapfs/mkapfs" -v
 
   userspace:
     runs-on: ubuntu-latest
