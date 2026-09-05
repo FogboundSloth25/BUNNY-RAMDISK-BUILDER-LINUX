@@ -6,6 +6,37 @@ source "$ROOT/env.sh"
 need_cmd iproxy
 need_cmd ssh
 
+start_usbmuxd() {
+  [[ "${BUNNY_USBMUX_AUTOSTART:-1}" == 1 ]] || return 0
+  if command -v usbmuxd >/dev/null 2>&1; then
+    if ! pgrep -x usbmuxd >/dev/null 2>&1; then
+      log "Starting usbmuxd"
+      if [[ -x /usr/sbin/usbmuxd ]]; then
+        sudo /usr/sbin/usbmuxd >/tmp/bunny-usbmuxd.log 2>&1 &
+      else
+        sudo usbmuxd >/tmp/bunny-usbmuxd.log 2>&1 &
+      fi
+      for _ in {1..20}; do
+        pgrep -x usbmuxd >/dev/null 2>&1 && break
+        sleep 0.1
+      done
+    fi
+  fi
+}
+
+wait_usb_recovery() {
+  for _ in {1..50}; do
+    if irecovery -q 2>/dev/null | grep -q "MODE: Recovery"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+start_usbmuxd
+wait_usb_recovery || true
+
 LOCAL_PORT="${BUNNY_SSH_LOCAL_PORT:-2222}"
 DEVICE_PORT="${BUNNY_SSH_DEVICE_PORT:-22}"
 USER_NAME="${BUNNY_SSH_USER:-root}"
