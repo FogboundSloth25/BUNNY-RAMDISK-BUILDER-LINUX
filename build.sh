@@ -593,7 +593,8 @@ echo "kc.bpatch: $PATCH_COUNT byte patches"
   -o "$BOOT/kernelcache.img4.patched" \
   -M "$IM4M" \
   -T rkrn \
-  -P "$WORK/kc.bpatch"
+  -P "$WORK/kc.bpatch" \
+  -J
 
 # Validate the exact artifact delivered to iBoot.  -P in img4lib applies
 # the byte-patch file to the IM4P payload; it does NOT create an IMG4/IM4P
@@ -752,7 +753,7 @@ p = Path(sys.argv[1])
 obj = IMG4(p.read_bytes())
 if not obj.im4p:
     raise SystemExit("boot logo IMG4 has no IM4P")
-if obj.im4p.fourcc != "rlgo":
+if obj.im4p.fourcc != "logo":
     raise SystemExit(f"boot logo IMG4 has wrong fourcc: {obj.im4p.fourcc!r}")
 payload = obj.im4p.payload
 if payload.compression:
