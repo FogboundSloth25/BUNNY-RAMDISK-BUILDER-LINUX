@@ -18,11 +18,11 @@ jobs:
       - name: Install shell tooling
         run: |
           if command -v apt-get >/dev/null; then
-            apt-get update && apt-get install -y bash coreutils findutils
+            apt-get update && apt-get install -y bash coreutils findutils python3
           elif command -v dnf >/dev/null; then
-            dnf install -y bash coreutils findutils
+            dnf install -y bash coreutils findutils python3
           elif command -v pacman >/dev/null; then
-            pacman -Sy --noconfirm bash coreutils findutils
+            pacman -Sy --noconfirm bash coreutils findutils python
           fi
       - name: Bash syntax
         run: |
