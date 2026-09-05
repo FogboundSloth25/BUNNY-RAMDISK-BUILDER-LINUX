@@ -207,8 +207,16 @@ inject_apfs() {
 
   local size target src_mp dst_mp src
   size="$(stat -c %s "$stock")"
-  target=$((size + 128 * 1024 * 1024))
-  (( target < 256 * 1024 * 1024 )) && target=$((256 * 1024 * 1024))
+
+  # idevicerestore advertises a 0x20000000 (512 MiB) RestoreRamDisk
+  # workspace for this generation. The compressed IMG4 payload is much
+  # smaller, so sizing a new APFS filesystem from stat(1) + 128 MiB can
+  # under-allocate the filesystem badly. Use the restore ramdisk capacity
+  # as the deterministic destination size.
+  target=$((0x20000000))
+  if (( target <= size )); then
+    target=$((size + 64 * 1024 * 1024))
+  fi
 
   src="$ROOT/work/ramdisk-source.$$"
   src_mp="$ROOT/work/apfs-src.$$"
@@ -234,11 +242,16 @@ inject_apfs() {
   mount_image "$out" "$dst_mp" rw apfs 0
 
   log "Copying stock APFS ramdisk"
-  (cd "$src_mp" && sudo tar --xattrs --acls --numeric-owner -cpf - .) |
-    (cd "$dst_mp" && sudo tar --xattrs --acls --numeric-owner -xpf -)
+  # linux-apfs-rw currently does not implement POSIX ACL operations. Preserve
+  # the filesystem tree, modes, owners and symlinks, but do not make ACL
+  # restoration a fatal operation.
+  if ! (cd "$src_mp" && sudo tar --no-acls --xattrs --numeric-owner -cpf - .) |
+     (cd "$dst_mp" && sudo tar --no-acls --xattrs --numeric-owner -xpf -); then
+    die "failed to copy stock APFS ramdisk"
+  fi
 
   log "Injecting SSH"
-  sudo tar --xattrs --acls --numeric-owner -xpf "$ssh_tar" -C "$dst_mp"
+  sudo tar --no-acls --xattrs --numeric-owner -xpf "$ssh_tar" -C "$dst_mp"
   sync
 
   [[ -s "${dst_mp}.bunny-loopdev" ]] || die "APFS destination loop device missing"
