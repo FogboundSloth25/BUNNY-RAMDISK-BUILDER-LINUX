@@ -715,7 +715,7 @@ if (( INJECT_SSH )); then
   BUNNY_RESTORED_EXTERNAL="$BUNNY_RESOURCES/restored_external"
   # Always use the repository-owned entrypoint. Do not retain an old downloaded
   # script from a previous build: that would make SSH behavior non-reproducible.
-  install -m 0755 "$ROOT/resources/restored_external.sh" "$BUNNY_RESTORED_EXTERNAL"
+  install -m 0755 "$ROOT/resources/ich_restored_external" "$BUNNY_RESTORED_EXTERNAL"
   [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "restored_external is empty"
 
   SSH_STAGE="$WORK/ssh-stage"

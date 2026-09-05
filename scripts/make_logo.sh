@@ -1,182 +1,154 @@
 #!/usr/bin/env bash
+# Build a centered ICH boot logo on a pure-black fullscreen canvas.
+#
+# Usage:
+#   ./scripts/make_logo.sh                         # BOARD from env or default
+#   ./scripts/make_logo.sh n841ap                  # boardconfig → panel lookup
+#   ./scripts/make_logo.sh d321ap --out bootchain/.../logo.img4
+#   ./scripts/make_logo.sh icon.png 828 1792       # explicit panel
+#
+# build.sh writes logo.img4 into the device bootchain folder.
+# boot.sh prefers that file; otherwise rebuilds for the connected panel.
 set -euo pipefail
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../env.sh
 source "$ROOT/env.sh"
-PY="$(python_bin)"
-INPUT="${BUNNY_LOGO_PATH:-$ROOT/logo.jpg}"
-OUT=""
-BOARD="${BUNNY_LOGO_MODEL:-}"
-CPID="${BUNNY_LOGO_CPID:-}"
+# shellcheck source=devices.sh
+source "$ROOT/scripts/devices.sh"
+
+PNG="$BUNNY_RESOURCES/ich_logo.png"
+BOARD=""
+WIDTH=""
+HEIGHT=""
+MARK=""
+CPID="0x8020"
+OUT_DEST=""
+
+_args=()
 while (($#)); do
-  case "$1" in
-    --out) OUT="$2"; shift 2 ;;
-    *) INPUT="$1"; shift ;;
-  esac
+    case "$1" in
+        --out)
+            [[ $# -ge 2 ]] || { echo "make_logo: --out needs a path" >&2; exit 2; }
+            OUT_DEST="$2"
+            shift 2
+            ;;
+        *)
+            _args+=("$1")
+            shift
+            ;;
+    esac
 done
-[ -n "$OUT" ] || die "use --out OUTPUT.img4"
-
-field_from_irecovery() {
-  command -v irecovery >/dev/null 2>&1 || return 0
-  local info
-  info="$(irecovery -q 2>/dev/null || true)"
-  awk -F': ' -v key="$1" '$1 == key {print $2; exit}' <<<"$info"
-}
-
-if [[ ! -f "$INPUT" && "$INPUT" == "$ROOT/logo.jpg" && -f "$BUNNY_RESOURCES/ich_logo.png" ]]; then
-  INPUT="$BUNNY_RESOURCES/ich_logo.png"
-fi
-[ -f "$INPUT" ] || die "boot logo source not found: $INPUT"
-
-BOARD="${BOARD:-$(field_from_irecovery MODEL)}"
-CPID="${CPID:-$(field_from_irecovery CPID)}"
-CPID="${CPID:-0x8020}"
-
-panel_for_board() {
-  case "$1" in
-    n841ap) echo "828 1792" ;;
-    d321ap) echo "1125 2436" ;;
-    d331ap|d331pap) echo "1242 2688" ;;
-    n104ap) echo "828 1792" ;;
-    d421ap) echo "1125 2436" ;;
-    d431ap) echo "1242 2688" ;;
-    d79ap) echo "750 1334" ;;
-    j210ap|j210aap) echo "1536 2048" ;;
-    j217ap|j218ap) echo "1668 2224" ;;
-    j320ap|j321ap) echo "1668 2388" ;;
-    j417ap|j418ap) echo "2048 2732" ;;
-    j307ap|j308ap) echo "1620 2160" ;;
-    *) return 1 ;;
-  esac
-}
-
-if [[ -n "${BUNNY_LOGO_WIDTH:-}" && -n "${BUNNY_LOGO_HEIGHT:-}" ]]; then
-  WIDTH="$BUNNY_LOGO_WIDTH"
-  HEIGHT="$BUNNY_LOGO_HEIGHT"
-elif [[ -n "$BOARD" ]] && panel="$(panel_for_board "$BOARD")"; then
-  read -r WIDTH HEIGHT <<<"$panel"
+if ((${#_args[@]})); then
+    set -- "${_args[@]}"
 else
-  WIDTH=1125
-  HEIGHT=2436
-  [[ -z "$BOARD" ]] || warn "unknown board '$BOARD'; using fallback panel ${WIDTH}x${HEIGHT}"
+    set --
 fi
 
-if [[ -n "${BUNNY_LOGO_MARK:-}" ]]; then
-  MARK="$BUNNY_LOGO_MARK"
-else
-  SHORT="$WIDTH"
-  [ "$HEIGHT" -lt "$WIDTH" ] && SHORT="$HEIGHT"
-  MARK=$((SHORT * 35 / 100))
+if (($# >= 1)) && [[ "$1" == *.png || "$1" == *.PNG || "$1" == /* || "$1" == ./* ]]; then
+    PNG="$1"
+    shift
+    if (($# >= 2)) && [[ "$1" =~ ^[0-9]+$ && "$2" =~ ^[0-9]+$ ]]; then
+        WIDTH="$1"
+        HEIGHT="$2"
+        shift 2
+        (($#)) && [[ "$1" =~ ^[0-9]+$ ]] && { MARK="$1"; shift; }
+        (($#)) && CPID="$1"
+    fi
+elif (($# >= 1)); then
+    BOARD="$1"
+    shift
+    (($#)) && [[ -f "$1" || "$1" == *.png ]] && { PNG="$1"; shift; }
 fi
-[ "$MARK" -lt 240 ] && MARK=240
-[ "$MARK" -gt 720 ] && MARK=720
-MARK=$((MARK - MARK % 2))
+
+if [[ -z "$WIDTH" || -z "$HEIGHT" ]]; then
+    BOARD="${BOARD:-${BUNNY_BOARD:-n841ap}}"
+    panel="$(nr_panel_for_board "$BOARD")" && known=1 || known=0
+    read -r WIDTH HEIGHT <<<"$panel"
+    if ((known == 0)); then
+        echo "warning: unknown board '$BOARD' — using fallback panel ${WIDTH}x${HEIGHT}" >&2
+    fi
+fi
+
+MARK="${MARK:-$(nr_logo_mark_for_panel "$WIDTH" "$HEIGHT")}"
+CPID="${BUNNY_CPID:-$CPID}"
+
 IBOOTIM="$BUNNY_TOOLS/ibootim"
-[ -x "$IBOOTIM" ] || die "missing ibootim; run ./setup_dependencies.sh"
 IMG4="$BUNNY_TOOLS/img4"
-[ -x "$IMG4" ] || IMG4="$ROOT/.local/img4"
-[ -x "$IMG4" ] || die "missing img4 tool"
-case "${CPID,,}" in
-  0x8020|8020) IM4M="$BUNNY_RESOURCES/IM4M_0x8020" ;;
-  0x8030|8030) IM4M="$BUNNY_RESOURCES/IM4M_0x8030" ;;
-  *) IM4M="$BUNNY_RESOURCES/IM4M_${CPID}" ;;
-esac
-[ -s "$IM4M" ] || die "missing IM4M: $IM4M"
-WORK="$(mktemp -d "$ROOT/work/logo.XXXXXX")"
-trap 'rm -rf "$WORK"' EXIT
-FULL="$WORK/logo-$WIDTH"x"$HEIGHT.png"
-RAW="$WORK/logo.raw"
-"$PY" - "$INPUT" "$FULL" "$WIDTH" "$HEIGHT" "$MARK" <<'PY'
-import statistics
-import sys
-import os
-from pathlib import Path
-from PIL import Image
+IM4M="$BUNNY_RESOURCES/IM4M_$CPID"
+[[ -f "$IM4M" ]] || IM4M="$BUNNY_RESOURCES/IM4M_0x8020"
 
-src, out, W, H, mark = sys.argv[1], Path(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+# Scratch next to --out when set; else resources/logo_cache
+if [[ -n "$OUT_DEST" ]]; then
+    CACHE="$(dirname "$OUT_DEST")/.logo_build"
+else
+    CACHE="$BUNNY_RESOURCES/logo_cache"
+fi
+mkdir -p "$CACHE"
+TAG="${BOARD:-${WIDTH}x${HEIGHT}}"
+TAG="${TAG//\//_}"
+FULL="$CACHE/${TAG}_${WIDTH}x${HEIGHT}.png"
+RAW="$CACHE/${TAG}_${WIDTH}x${HEIGHT}.raw"
+OUT="$CACHE/${TAG}_${WIDTH}x${HEIGHT}.img4"
+
+PUB_RAW="$BUNNY_RESOURCES/ich_logo.raw"
+PUB_OUT="$BUNNY_RESOURCES/logo.img4"
+
+[[ -f "$PNG" ]] || { echo "missing PNG: $PNG" >&2; exit 1; }
+[[ -x "$IBOOTIM" && -x "$IMG4" ]] || { echo "missing ibootim/img4" >&2; exit 1; }
+[[ -f "$IM4M" ]] || { echo "missing IM4M" >&2; exit 1; }
+
+echo "logo: board=${BOARD:-custom} panel=${WIDTH}x${HEIGHT} mark=${MARK} cpid=${CPID}"
+
+python3 - "$PNG" "$FULL" "$WIDTH" "$HEIGHT" "$MARK" <<'PY'
+from pathlib import Path
+import sys
+
+try:
+    from PIL import Image
+except ImportError:
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pillow", "-q"])
+    from PIL import Image
+
+src, out, W, H, LOGO = sys.argv[1], Path(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
 im = Image.open(src).convert("RGBA")
+base = Image.new("RGBA", im.size, (255, 255, 255, 255))
+base.paste(im, mask=im.split()[-1])
+gray = base.convert("L")
+bw = gray.point(lambda p: 255 if p < 140 else 0, mode="L").convert("RGB")
 
-# ibootim itself performs the required RGBA -> BGRA conversion. Do not
-# pre-swap channels here. Normalize arbitrary artwork to white-on-black.
-rgba = im.load()
-bw, bh = im.size
-frame_x = max(1, min(16, bw // 20))
-frame_y = max(1, min(16, bh // 20))
-border = []
-for y in range(bh):
-    if y < frame_y or y >= bh - frame_y:
-        xs = range(bw)
-    else:
-        xs = list(range(frame_x)) + list(range(max(frame_x, bw-frame_x), bw))
-    for x in xs:
-        border.append(rgba[x, y])
+mark = bw.resize((LOGO, LOGO), Image.Resampling.NEAREST)
+px = mark.load()
+for y in range(LOGO):
+    for x in range(LOGO):
+        r, g, b = px[x, y]
+        px[x, y] = (255, 255, 255) if (r + g + b) > 300 else (0, 0, 0)
 
-def lum(px):
-    r,g,b,a = px
-    if a < 16:
-        return 0
-    return 0.2126*r + 0.7152*g + 0.0722*b
-
-bg = statistics.median(lum(px) for px in border) if border else 0
-gray = im.convert("L")
-mode = os.environ.get("BUNNY_LOGO_INVERT", "auto").lower()
-if mode not in {"auto", "light", "dark", "1", "0"}:
-    raise SystemExit("BUNNY_LOGO_INVERT must be auto, light, dark, 1, or 0")
-invert = (bg >= 128) if mode == "auto" else mode in {"light", "1"}
-
-if invert:
-    threshold = max(72, min(210, round(bg * 0.72)))
-    mask = gray.point(lambda p: 255 if p < threshold else 0, "L")
-else:
-    threshold = max(45, min(210, round(bg + (255-bg) * 0.28)))
-    mask = gray.point(lambda p: 255 if p > threshold else 0, "L")
-
-mono = mask.convert("RGB")
-src_w, src_h = mono.size
-scale = min(mark / src_w, mark / src_h)
-new_w = max(1, round(src_w * scale))
-new_h = max(1, round(src_h * scale))
-mark_im = mono.resize((new_w, new_h), Image.Resampling.LANCZOS)
 canvas = Image.new("RGB", (W, H), (0, 0, 0))
-canvas.paste(mark_im, ((W-new_w)//2, (H-new_h)//2))
+x = (W - LOGO) // 2
+y = (H - LOGO) // 2
+canvas.paste(mark, (x, y))
 out.parent.mkdir(parents=True, exist_ok=True)
-canvas.save(out, "PNG")
-
-corner = [canvas.getpixel((0,0)), canvas.getpixel((W-1,0)), canvas.getpixel((0,H-1)), canvas.getpixel((W-1,H-1))]
+canvas.save(out)
 white = sum(1 for p in canvas.getdata() if p[0] > 200)
-print(f"logo canvas {W}x{H} mark_box={new_w}x{new_h} background_luma={bg:.1f} invert={invert} threshold={threshold} white_pixels={white}")
-if any(p != (0,0,0) for p in corner):
-    raise SystemExit("logo canvas corners are not pure black")
+print(f"fullscreen {W}x{H} mark={LOGO} at ({x},{y}) white_pixels={white}")
 if white < 100:
-    raise SystemExit("logo has fewer than 100 visible white pixels")
+    raise SystemExit("logo mark has no visible white pixels — abort")
 PY
-"$IBOOTIM" "$FULL" "$RAW"
 
-# Verify that the generated iBoot Embedded Image is readable again and
-# preserves the exact panel dimensions. This catches malformed color-space
-# headers before the IMG4 is sent to an actual device.
-ROUNDTRIP="$WORK/logo-roundtrip.png"
-"$IBOOTIM" -c "$RAW" "$ROUNDTRIP" >/dev/null
-"$PY" - "$ROUNDTRIP" "$WIDTH" "$HEIGHT" <<'PY'
-import sys
-from pathlib import Path
-from PIL import Image
-p=Path(sys.argv[1]); expected=(int(sys.argv[2]), int(sys.argv[3]))
-im=Image.open(p)
-if im.size != expected:
-    raise SystemExit(f"iBootIm round-trip dimensions mismatch: got={im.size}, expected={expected}")
-if im.getbbox() is None:
-    raise SystemExit("iBootIm round-trip is completely empty")
-print(f"iBootIm round-trip verified: {im.size[0]}x{im.size[1]}")
-PY
-mkdir -p "$(dirname "$OUT")"
+"$IBOOTIM" "$FULL" "$RAW"
 "$IMG4" -i "$RAW" -o "$OUT" -A -T logo -M "$IM4M"
-[ -s "$OUT" ] || die "logo IMG4 was not produced"
-"$PY" - "$OUT" <<'PY'
-import sys
-from pathlib import Path
-from pyimg4 import IMG4
-obj = IMG4(Path(sys.argv[1]).read_bytes())
-if not obj.im4p: raise SystemExit("logo IMG4 has no IM4P")
-if obj.im4p.fourcc != "logo": raise SystemExit("wrong logo fourcc: " + repr(obj.im4p.fourcc))
-print("logo IMG4 verified")
-PY
+
+if [[ -n "$OUT_DEST" ]]; then
+    mkdir -p "$(dirname "$OUT_DEST")"
+    cp -f "$OUT" "$OUT_DEST"
+    echo "wrote $OUT_DEST (centered for ${WIDTH}x${HEIGHT})"
+    # Drop scratch beside bootchain
+    rm -rf "$CACHE"
+else
+    cp -f "$RAW" "$PUB_RAW"
+    cp -f "$OUT" "$PUB_OUT"
+    echo "wrote $OUT"
+    echo "published $PUB_OUT (centered for ${WIDTH}x${HEIGHT})"
+fi
