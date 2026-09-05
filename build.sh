@@ -715,7 +715,12 @@ if (( INJECT_SSH )); then
   BUNNY_RESTORED_EXTERNAL="$BUNNY_RESOURCES/restored_external"
   # Use the exact upstream ICH A12/A13 restored_external payload. It is a
   # Mach-O executable, not a shell script; do not download/replace it.
-  install -m 0755 "$ROOT/resources/ssh_restored_external" "$BUNNY_RESTORED_EXTERNAL"
+  install -m 0755 "$ROOT/resources/restored_external.bin" "$BUNNY_RESTORED_EXTERNAL"
+  # The ICH restored_external is a Mach-O inetd-style launcher. Verify its
+  # magic before putting it into the APFS image so a shell script can never
+  # silently replace the required binary again.
+  magic="$(od -An -tx1 -N4 "$BUNNY_RESTORED_EXTERNAL" | tr -d " [:space:]")"
+  [[ "$magic" == "cffaedfe" ]] || die "restored_external is not the upstream arm64 Mach-O (magic=$magic)"
   [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "restored_external is empty"
 
   SSH_STAGE="$WORK/ssh-stage"
