@@ -725,7 +725,11 @@ if (( INJECT_SSH )); then
   # Replace the stock rc.boot launcher with our SSH-only entrypoint. This is a
   # shell script and therefore does not require a code-signature/trustcache
   # entry; Dropbear itself remains covered by sshtarlist.txt.
+  # ssh-stage is created only from allowlisted paths, so /etc may not exist
+  # until we add our launcher explicitly.
+  mkdir -p "$SSH_STAGE/etc"
   install -m 0755 "$ROOT/resources/bunny_rc.boot" "$SSH_STAGE/etc/rc.boot"
+  [[ -x "$SSH_STAGE/etc/rc.boot" ]] || die "failed to stage Bunny rc.boot"
 
   # The ICH restored_external replaces the archive copy. Put the exact final
   # bytes into the trustcache staging tree before collecting CDHashes.
