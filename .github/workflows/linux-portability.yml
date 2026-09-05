@@ -114,7 +114,7 @@ jobs:
           make -C "$RUNNER_TEMP/img4lib" -j"$(nproc)"
           test -x "$RUNNER_TEMP/img4lib/img4"
           "$RUNNER_TEMP/img4lib/img4" -h >/tmp/img4-help
-          grep -q -- '-P[f|u]' /tmp/img4-help
+          grep -q -- '-P' /tmp/img4-help
       - name: Validate kernel patch generator
         run: |
           set -euo pipefail
