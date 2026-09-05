@@ -64,8 +64,15 @@ load_apfs() {
   local kernel vermagic deps signer errlog
   kernel="$(uname -r)"
 
-  if grep -qw '^apfs ' /proc/modules 2>/dev/null; then
-    echo "==> Linux APFS module already loaded"
+  is_apfs_registered() {
+    [[ -d /sys/module/apfs ]] && return 0
+    grep -Eq '(^|[[:space:]])apfs([[:space:]]|$)' /proc/filesystems 2>/dev/null && return 0
+    grep -Eq '^apfs[[:space:]]' /proc/modules 2>/dev/null && return 0
+    return 1
+  }
+
+  if is_apfs_registered; then
+    echo "==> Linux APFS filesystem driver already registered"
     return 0
   fi
 
@@ -86,54 +93,42 @@ load_apfs() {
     die "APFS module vermagic does not match running kernel: $vermagic"
   fi
 
-  # Load declared dependencies only. No error is raised when an optional
-  # dependency is not present and the module declares no dependency.
   if [[ -n "$deps" ]]; then
-    tr ',' '\n' <<<"$deps" | while IFS= read -r dep; do
+    while IFS= read -r dep; do
       [[ -n "$dep" ]] || continue
-      sudo modprobe "$dep"
-    done
+      sudo modprobe "$dep" || die "could not load APFS dependency: $dep"
+    done < <(tr ',' '
+' <<<"$deps")
   fi
 
   errlog="$(mktemp /tmp/bunny-apfs-load.XXXXXX)"
   if sudo insmod "$mod" 2>"$errlog"; then
     rm -f "$errlog"
   else
-    # insmod returns EEXIST when the module is already registered/loaded.
-    # Treat that state as success and verify the actual module state below.
     if grep -qiE 'File exists|already exists|already loaded' "$errlog"; then
       echo "==> APFS module is already registered; continuing"
     else
       echo "[x] APFS module load failed." >&2
       cat "$errlog" >&2 || true
-      echo "    kernel log access:" >&2
-      if dmesg >/tmp/bunny-apfs-dmesg.txt 2>&1; then
-        tail -n 40 /tmp/bunny-apfs-dmesg.txt >&2
-        rm -f /tmp/bunny-apfs-dmesg.txt
-      else
-        echo "      dmesg is not readable by this user." >&2
-      fi
+      echo "    kernel log:" >&2
+      dmesg | tail -n 40 >&2 2>/dev/null || true
       rm -f "$errlog"
       die "could not load Linux APFS module for kernel $kernel"
     fi
     rm -f "$errlog"
   fi
 
-  # Confirm that the filesystem type is actually registered, rather than
-  # relying solely on the insmod exit code.
-  if grep -qw '^apfs ' /proc/filesystems 2>/dev/null ||
-     grep -qw '^apfs ' /proc/modules 2>/dev/null; then
-    echo "==> Linux APFS module ready"
+  if is_apfs_registered; then
+    echo "==> Linux APFS filesystem driver ready"
     return 0
   fi
 
-  # Built-in filesystem drivers do not appear in /proc/modules.
-  if grep -qw 'nodev[[:space:]]*apfs' /proc/filesystems 2>/dev/null; then
-    echo "==> Linux APFS filesystem driver is built in"
-    return 0
-  fi
-
-  die "APFS module was not registered after insmod"
+  echo "[x] insmod returned, but APFS is not visible as a loaded/registered filesystem." >&2
+  echo "    /sys/module/apfs:" >&2
+  [[ -d /sys/module/apfs ]] && echo "      present" >&2 || echo "      absent" >&2
+  echo "    /proc/filesystems:" >&2
+  grep -E 'apfs' /proc/filesystems >&2 2>/dev/null || true
+  die "APFS filesystem driver was not registered"
 }
 
 mount_image() {
