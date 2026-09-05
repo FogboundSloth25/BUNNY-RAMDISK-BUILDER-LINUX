@@ -32,7 +32,7 @@ IM4M=""
 KERNEL_MODE="patched"
 USE_IBSS=1
 WITH_FW=1
-WITH_SEP=1
+WITH_SEP=-1
 INJECT_SSH=1
 DRY_RUN=0
 
@@ -244,13 +244,30 @@ for name in ["iBEC","iBSS","KernelCache","DeviceTree","RestoreRamDisk","RestoreT
     path=item.get("Info",{}).get("Path")
     if path: out[name]=path
 
-# RestoreSEP has appeared under several Manifest keys across restore generations.
-for alias in ["RestoreSEP","SEP","SepFirmware","SEPFirmware","RestoreSepFirmware","rsepfirmware"]:
-    item=x.get("Manifest",{}).get(alias,{})
-    path=item.get("Info",{}).get("Path")
-    if path:
-        out["RestoreSEP"]=path
-        break
+# RestoreSEP naming varies between restore generations. Prefer exact names,
+# then fall back to any Manifest entry whose key/path clearly identifies SEP.
+manifest = x.get("Manifest", {})
+aliases = ["RestoreSEP","SEP","SepFirmware","SEPFirmware","RestoreSepFirmware","rsepfirmware"]
+candidates = []
+for key, item in manifest.items():
+    path = str(item.get("Info",{}).get("Path",""))
+    kl = str(key).lower()
+    pl = path.lower()
+    if not path or not path.lower().endswith(".im4p"):
+        continue
+    score = 0
+    if key in aliases:
+        score += 100
+    if "sep" in kl:
+        score += 50
+    if "sep" in pl:
+        score += 40
+    if score:
+        candidates.append((score, key, path))
+if candidates:
+    candidates.sort(reverse=True)
+    out["RestoreSEP"] = candidates[0][2]
+    out["RestoreSEPKey"] = candidates[0][1]
 print(json.dumps(out))
 PY
 )"
@@ -358,9 +375,18 @@ if (( WITH_FW )); then
 fi
 fetch_member SPTM || true
 fetch_member TXM || true
+if (( WITH_SEP < 0 )); then
+  if [[ -n "$(path_for RestoreSEP)" ]]; then
+    WITH_SEP=1
+    echo "RestoreSEP: detected ($(path_for RestoreSEP))"
+  else
+    WITH_SEP=0
+    echo "RestoreSEP: not present in selected BuildManifest; skipping"
+  fi
+fi
 if (( WITH_SEP )); then
   SEP_PATH="$(path_for RestoreSEP)"
-  [[ -n "$SEP_PATH" ]] || die "BuildManifest has no RestoreSEP path for $PRODUCT $VERSION $BUILD"
+  [[ -n "$SEP_PATH" ]] || die "internal error: RestoreSEP enabled without a manifest path"
   fetch_member RestoreSEP
 fi
 
@@ -523,6 +549,7 @@ if (( WITH_SEP )); then
   [[ -s "$WORK/RestoreSEP.im4p" ]] || die "RestoreSEP extraction missing: $WORK/RestoreSEP.im4p"
   "$IMG4" -i "$WORK/RestoreSEP.im4p" -o "$BOOT/sep-firmware.img4" -M "$IM4M" -T rsep
   [[ -s "$BOOT/sep-firmware.img4" ]] || die "RestoreSEP packaging failed"
+  echo "RestoreSEP packaged: $BOOT/sep-firmware.img4"
 fi
 
 if [[ -f "$WORK/SPTM.im4p" ]]; then
