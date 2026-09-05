@@ -82,12 +82,21 @@ if ! command -v iproxy >/dev/null 2>&1; then
   esac
 fi
 
+download() {
+  local url="$1" out="$2"
+  mkdir -p "$(dirname "$out")"
+  curl --fail --show-error --location --retry 8 --retry-all-errors \
+    --connect-timeout 20 --speed-time 60 --speed-limit 1024 \
+    --output "$out" "$url"
+  [[ -s "$out" ]] || die "downloaded file is empty: $url"
+}
+
 log "Fetching A12/A13 patchfinders and usbliter8ctl"
-curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8-iboot-patchfinder/main/iboot_patchfinder.py -o "$BUNNY_PATCH/iboot_patchfinder.py"
-curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8-kernel-patchfinder/main/kernel_patchfinder.py -o "$BUNNY_PATCH/kernel_patchfinder.py"
-curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8-sptm-patchfinder/main/sptm_patchfinder.py -o "$BUNNY_PATCH/sptm_patchfinder.py"
-curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8-txm-patchfinder/main/txm_patchfinder.py -o "$BUNNY_PATCH/txm_patchfinder.py"
-curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/usbliter8ctl -o "$BUNNY_TOOLS/usbliter8ctl"
+download https://raw.githubusercontent.com/Leeksov/usbliter8-iboot-patchfinder/main/iboot_patchfinder.py "$BUNNY_PATCH/iboot_patchfinder.py"
+download https://raw.githubusercontent.com/Leeksov/usbliter8-kernel-patchfinder/main/kernel_patchfinder.py "$BUNNY_PATCH/kernel_patchfinder.py"
+download https://raw.githubusercontent.com/Leeksov/usbliter8-sptm-patchfinder/main/sptm_patchfinder.py "$BUNNY_PATCH/sptm_patchfinder.py"
+download https://raw.githubusercontent.com/Leeksov/usbliter8-txm-patchfinder/main/txm_patchfinder.py "$BUNNY_PATCH/txm_patchfinder.py"
+download https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/usbliter8ctl "$BUNNY_TOOLS/usbliter8ctl"
 chmod 755 "$BUNNY_PATCH"/*.py "$BUNNY_TOOLS/usbliter8ctl"
 
 if [[ ! -x "$BUNNY_TOOLS/trustcache" ]]; then
@@ -131,8 +140,8 @@ MKAPFS_VERSION="$("$APFS_PROGS_STAGE/mkapfs/mkapfs" -v)"
 install -m 0755 "$APFS_PROGS_STAGE/mkapfs/mkapfs" "$BUNNY_TOOLS/mkapfs"
 
 log "Fetching default A12/A13 IM4M resources"
-curl -fsSL https://raw.githubusercontent.com/strawhatdev01/Strawhat-Ramdisk/main/resources/IM4M_0x8020 -o "$BUNNY_RESOURCES/IM4M_0x8020"
-curl -fsSL https://raw.githubusercontent.com/strawhatdev01/Strawhat-Ramdisk/main/resources/IM4M_0x8030 -o "$BUNNY_RESOURCES/IM4M_0x8030"
+download https://raw.githubusercontent.com/strawhatdev01/Strawhat-Ramdisk/main/resources/IM4M_0x8020 "$BUNNY_RESOURCES/IM4M_0x8020"
+download https://raw.githubusercontent.com/strawhatdev01/Strawhat-Ramdisk/main/resources/IM4M_0x8030 "$BUNNY_RESOURCES/IM4M_0x8030"
 
 if [[ -d "$BUNNY_THIRD_PARTY/libirecovery/udev" ]]; then
   for rule in "$BUNNY_THIRD_PARTY/libirecovery"/udev/*.rules; do
