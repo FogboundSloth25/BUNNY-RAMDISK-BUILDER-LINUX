@@ -37,3 +37,6 @@ LAST_BOOTCHAIN=""
 if [[ -s "$BUNNY_LAST" ]]; then
   LAST_BOOTCHAIN="$(<"$BUNNY_LAST")"
 fi
+
+# Linux usbmuxd settings
+BUNNY_USBMUX_AUTOSTART="${BUNNY_USBMUX_AUTOSTART:-1}"
