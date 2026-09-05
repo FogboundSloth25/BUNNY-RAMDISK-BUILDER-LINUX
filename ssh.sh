@@ -121,7 +121,7 @@ wait_for_ramdisk_usb
 wait_for_ssh_mux "$USBMUXD_PRIVATE_SOCKET"
 
 LOCAL_PORT="${BUNNY_SSH_LOCAL_PORT:-2222}"
-DEVICE_PORT="${BUNNY_SSH_DEVICE_PORT:-22}"
+DEVICE_PORT="${BUNNY_SSH_DEVICE_PORT:-44}"
 USER_NAME="${BUNNY_SSH_USER:-root}"
 PASSWORD="${BUNNY_SSH_PASSWORD:-alpine}"
 # Stop any stale helper from the old device-port-44 configuration.
