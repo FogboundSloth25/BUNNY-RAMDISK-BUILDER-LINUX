@@ -640,17 +640,11 @@ if (( INJECT_SSH )); then
   inject_ssh_ramdisk "$WORK/RestoreRamDisk.dmg" "$SSH_TAR" "$WORK/ramdisk-injected.dmg"
   [[ -s "$WORK/ramdisk-injected.dmg" ]] || die "ramdisk injection produced no image"
 
-  "$PY" "$ROOT/scripts/img4_package.py" \
-    --im4p "$RESTORE_RAMDISK_SRC" \
-    --raw "$WORK/ramdisk-injected.dmg" \
-    --output "$BOOT/ramdisk.img4" \
-    --im4m "$IM4M"
+  "$IMG4" -i "$WORK/ramdisk-injected.dmg" \
+    -o "$BOOT/ramdisk.img4" -M "$IM4M" -A -T rdsk
 else
-  "$PY" "$ROOT/scripts/img4_package.py" \
-    --im4p "$RESTORE_RAMDISK_SRC" \
-    --raw "$WORK/RestoreRamDisk.dmg" \
-    --output "$BOOT/ramdisk.img4" \
-    --im4m "$IM4M"
+  "$IMG4" -i "$WORK/RestoreRamDisk.dmg" \
+    -o "$BOOT/ramdisk.img4" -M "$IM4M" -A -T rdsk
 fi
 
 if (( WITH_FW )); then
