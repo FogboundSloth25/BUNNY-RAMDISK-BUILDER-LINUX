@@ -46,12 +46,19 @@ def main() -> int:
 
     patched = bytes(pf.data)
     delta = sum(a != b for a, b in zip(original, patched))
-    if len(edits) != 6 or delta != 24:
-        raise SystemExit(f"minimal iOS 18 patch invariant failed: edits={len(edits)} byte_delta={delta}")
+    # Six instruction sites are the invariant. The number of changed bytes is
+    # not necessarily 24 because an encoded ARM64 instruction may legitimately
+    # retain one or more bytes from the original encoding.
+    if len(edits) != 6 or not (0 < delta <= 24):
+        raise SystemExit(
+            f"minimal iOS 18 patch invariant failed: edits={len(edits)} byte_delta={delta}"
+        )
 
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_bytes(patched)
-    print("iOS 18 minimal kernel patch set: 6 instructions, 24 bytes")
+    print(
+        f"iOS 18 minimal kernel patch set: 6 instructions, byte_delta={delta}"
+    )
     return 0
 
 if __name__ == "__main__":

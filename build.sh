@@ -569,7 +569,7 @@ if [[ "$KERNEL_MODE" == patched ]]; then
   log "Patching kernel (minimal iOS 18 A12/A13 set)"
   KERNEL_LOG="$WORK/kernel-patch.log"
   "$PY" "$ROOT/scripts/apply_ios18_kernel_patches.py"     "$WORK/kernelcache.raw" "$WORK/kernelcache.patched.raw" | tee "$KERNEL_LOG"
-  grep -Fq "iOS 18 minimal kernel patch set: 6 instructions, 24 bytes" "$KERNEL_LOG" ||
+  grep -Eq "iOS 18 minimal kernel patch set: 6 instructions, byte_delta=([1-9]|1[0-9]|2[0-4])$" "$KERNEL_LOG" ||
     die "iOS 18 kernel patch invariant failed"
 else
   cp "$WORK/kernelcache.raw" "$WORK/kernelcache.patched.raw"
