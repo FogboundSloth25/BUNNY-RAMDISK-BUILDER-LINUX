@@ -86,21 +86,68 @@ trap 'rm -rf "$WORK"' EXIT
 FULL="$WORK/logo-$WIDTH"x"$HEIGHT.png"
 RAW="$WORK/logo.raw"
 "$PY" - "$INPUT" "$FULL" "$WIDTH" "$HEIGHT" "$MARK" <<'PY'
+import statistics
 import sys
+import os
 from pathlib import Path
 from PIL import Image
+
 src, out, W, H, mark = sys.argv[1], Path(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
 im = Image.open(src).convert("RGBA")
-base = Image.new("RGBA", im.size, (255,255,255,255))
-base.paste(im, mask=im.getchannel("A"))
-bw = base.convert("L").point(lambda p: 255 if p < 140 else 0, "L").convert("RGB")
-mark_im = bw.resize((mark, mark), Image.Resampling.NEAREST)
-canvas = Image.new("RGB", (W,H), (0,0,0))
-canvas.paste(mark_im, ((W-mark)//2, (H-mark)//2))
+
+# ibootim itself performs the required RGBA -> BGRA conversion. Do not
+# pre-swap channels here. Normalize arbitrary artwork to white-on-black.
+rgba = im.load()
+bw, bh = im.size
+frame_x = max(1, min(16, bw // 20))
+frame_y = max(1, min(16, bh // 20))
+border = []
+for y in range(bh):
+    if y < frame_y or y >= bh - frame_y:
+        xs = range(bw)
+    else:
+        xs = list(range(frame_x)) + list(range(max(frame_x, bw-frame_x), bw))
+    for x in xs:
+        border.append(rgba[x, y])
+
+def lum(px):
+    r,g,b,a = px
+    if a < 16:
+        return 0
+    return 0.2126*r + 0.7152*g + 0.0722*b
+
+bg = statistics.median(lum(px) for px in border) if border else 0
+gray = im.convert("L")
+mode = os.environ.get("BUNNY_LOGO_INVERT", "auto").lower()
+if mode not in {"auto", "light", "dark", "1", "0"}:
+    raise SystemExit("BUNNY_LOGO_INVERT must be auto, light, dark, 1, or 0")
+invert = (bg >= 128) if mode == "auto" else mode in {"light", "1"}
+
+if invert:
+    threshold = max(72, min(210, round(bg * 0.72)))
+    mask = gray.point(lambda p: 255 if p < threshold else 0, "L")
+else:
+    threshold = max(45, min(210, round(bg + (255-bg) * 0.28)))
+    mask = gray.point(lambda p: 255 if p > threshold else 0, "L")
+
+mono = mask.convert("RGB")
+src_w, src_h = mono.size
+scale = min(mark / src_w, mark / src_h)
+new_w = max(1, round(src_w * scale))
+new_h = max(1, round(src_h * scale))
+mark_im = mono.resize((new_w, new_h), Image.Resampling.LANCZOS)
+canvas = Image.new("RGB", (W, H), (0, 0, 0))
+canvas.paste(mark_im, ((W-new_w)//2, (H-new_h)//2))
+out.parent.mkdir(parents=True, exist_ok=True)
 canvas.save(out, "PNG")
+
+corner = [canvas.getpixel((0,0)), canvas.getpixel((W-1,0)), canvas.getpixel((0,H-1)), canvas.getpixel((W-1,H-1))]
 white = sum(1 for p in canvas.getdata() if p[0] > 200)
-print("logo canvas", W, H, "mark", mark, "white_pixels", white)
-if white < 100: raise SystemExit("logo contains fewer than 100 visible white pixels")
+print(f"logo canvas {W}x{H} mark_box={new_w}x{new_h} background_luma={bg:.1f} invert={invert} threshold={threshold} white_pixels={white}")
+if any(p != (0,0,0) for p in corner):
+    raise SystemExit("logo canvas corners are not pure black")
+if white < 100:
+    raise SystemExit("logo has fewer than 100 visible white pixels")
 PY
 "$IBOOTIM" "$FULL" "$RAW"
 

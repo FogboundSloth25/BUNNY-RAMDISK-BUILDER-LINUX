@@ -65,7 +65,7 @@ start_usbmuxd() {
   done
 
   log "Starting isolated usbmuxd on $USBMUXD_PRIVATE_SOCKET"
-  sudo usbmuxd -f -p -S "$USBMUXD_PRIVATE_SOCKET" >/tmp/bunny-usbmuxd.log 2>&1 &
+  USBMUXD_DEFAULT_DEVICE_MODE=1 sudo -E usbmuxd -f -p -S "$USBMUXD_PRIVATE_SOCKET" >/tmp/bunny-usbmuxd.log 2>&1 &
   USBMUXD_PRIVATE_STARTED=1
 
   for _ in {1..50}; do

@@ -169,3 +169,11 @@ APFS write support is experimental and must be considered a device-testing stage
 - **strawhatdev01/Strawhat-Ramdisk** — Linux-independent APFS/ramdisk workflow reference
 
 Use only on devices you own or are authorized to research.
+
+### Linux USB configuration
+
+The ramdisk exposes AppleUSBMux only. The host usbmuxd should use initial device mode `1` for this environment; mode `3` is the optional CDC-NCM configuration and can produce the harmless `kVendorRequestSelectExtendedFunction: Did not find configuration for function 3` message. `ssh.sh` forces mode 1 for its isolated usbmuxd session.
+
+### Boot logo
+
+Logo generation automatically detects light-background vs dark-background source artwork. Set `BUNNY_LOGO_INVERT=light` or `dark` to override detection when a custom image needs it.
