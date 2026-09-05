@@ -227,13 +227,19 @@ inject_apfs() {
   log "Injecting SSH into APFS ramdisk"
   local ssh_list="${BUNNY_RESOURCES}/sshtarlist.txt"
   if [[ -s "$ssh_list" ]]; then
-    # The upstream archive contains build-host locale/terminfo and other
-    # dependencies which do not belong in the target ramdisk. Extract only
-    # the curated payload list; archive paths are work/sshtar/<target>.
+    # sshtarlist.txt is intentionally a project-relative list used by the
+    # upstream trustcache builder (work/sshtar/<target>). The tar archive
+    # itself is rooted at sshtar/, so create a temporary member list with
+    # exactly the archive-relative names.
+    local ssh_tar_list
+    ssh_tar_list="$(mktemp /tmp/bunny-sshtar-list.XXXXXX)"
+    sed -E 's#^work/sshtar/##; /^[[:space:]]*$/d' "$ssh_list" > "$ssh_tar_list"
     if ! sudo tar --no-acls --no-xattrs --no-same-owner --numeric-owner \
-        --strip-components=2 -xzf "$ssh_tar" -C "$src_mp" -T "$ssh_list"; then
-      die "SSH payload injection failed using sshtarlist.txt"
+        -xzf "$ssh_tar" -C "$src_mp" -T "$ssh_tar_list"; then
+      rm -f "$ssh_tar_list"
+      die "SSH payload injection failed: archive/list mismatch"
     fi
+    rm -f "$ssh_tar_list"
   else
     die "missing SSH payload allowlist: $ssh_list"
   fi
