@@ -120,7 +120,8 @@ if (( USE_LOGO )); then
   log "Showing project boot logo"
   echo "    logo: $BOOT/logo.img4 ($(stat -c %s "$BOOT/logo.img4") bytes)"
   irecovery -f "$BOOT/logo.img4"
-  if irecovery -c "setpicture 1" || irecovery -c "setpicture" || irecovery -c "setpicture 4" || irecovery -c "setpicture 0"; then
+  # Standard RestoreLogo flow uses setpicture 4. Keep legacy indices only as fallbacks.
+  if irecovery -c "setpicture 4" || irecovery -c "setpicture 1" || irecovery -c "setpicture 0" || irecovery -c "setpicture"; then
     echo "==> setpicture accepted"
     # setpicture selects the uploaded image; bgcolor forces iBoot to refresh the LCD.
     irecovery -c "bgcolor 0 0 0" || die "logo selected but bgcolor refresh failed"
