@@ -77,6 +77,7 @@ require_file "$BOOT/devicetree.img4"
 require_file "$BOOT/trustcache.img4"
 require_file "$BOOT/ramdisk.img4"
 require_file "$BOOT/kernelcache.img4.patched"
+require_file "$BOOT/chain.info"
 
 log "Loading patched iBSS"
 show_state "BEFORE iBSS"
@@ -168,9 +169,9 @@ irecovery -c "setenvnp boot-args $BOOTARGS" || \
 echo "==> Final boot environment"
 irecovery -q 2>&1 || true
 
-log "Booting patched kernel"
-# bootx should make Recovery disappear. Merely sending the command while
-# irecovery still reports Recovery is not proof that the kernel was accepted.
+log "Booting kernel + kc.bpatch"
+# bootx causes iBoot to consume the rkrn payload and apply its krnl/kc.bpatch
+# property. Do not call the upload itself proof of handoff.
 irecovery -c bootx
 
 log "Waiting for Recovery USB disconnect after bootx"
