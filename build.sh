@@ -123,16 +123,20 @@ PY
     ipsw extract --remote "$IPSW_URL" --output "$(dirname "$MANIFEST")" --flat --pattern 'BuildManifest.plist' >/dev/null 2>&1
     CANDIDATE="$(find "$(dirname "$MANIFEST")" -type f -name BuildManifest.plist | head -1 || true)"
     [[ -s "$CANDIDATE" ]] || die "ipsw could not obtain BuildManifest.plist"
-    cp "$CANDIDATE" "$MANIFEST"
+    if [[ "$CANDIDATE" != "$MANIFEST" ]]; then
+      cp -f "$CANDIDATE" "$MANIFEST"
+    fi
   fi
 fi
 
-IDENTITY="$("$PY" - "$MANIFEST" "$MODEL" <<'PY'
+MODEL_MANIFEST="${MODEL^^}"
+
+IDENTITY="$("$PY" - "$MANIFEST" "$MODEL_MANIFEST" <<'PY'
 import json,plistlib,sys
 from pathlib import Path
 m=plistlib.loads(Path(sys.argv[1]).read_bytes())
-board=sys.argv[2]
-ids=[x for x in m.get("BuildIdentities",[]) if x.get("Info",{}).get("DeviceClass")==board]
+board=sys.argv[2].upper()
+ids=[x for x in m.get("BuildIdentities",[]) if str(x.get("Info",{}).get("DeviceClass","")).upper()==board]
 if not ids:
     raise SystemExit("no BuildIdentity for board "+board)
 x=ids[0]
@@ -227,8 +231,9 @@ extract_raw "$WORK/KernelCache.im4p" "$WORK/kernelcache.raw"
 [[ -f "$WORK/TXM.im4p" ]] && extract_raw "$WORK/TXM.im4p" "$WORK/TXM.raw"
 
 if (( DRY_RUN )); then
-  echo "=== dry run ==="
+  echo "=== DRY RUN SUCCESS ==="
   jq . <<<"$IDENTITY"
+  echo "cache: $CACHE"
   exit 0
 fi
 
