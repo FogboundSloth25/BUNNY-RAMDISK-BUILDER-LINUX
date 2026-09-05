@@ -57,19 +57,19 @@ start_usbmuxd
 wait_usb_recovery || true
 
 LOCAL_PORT="${BUNNY_SSH_LOCAL_PORT:-2222}"
-DEVICE_PORT="${BUNNY_SSH_DEVICE_PORT:-22}"
+DEVICE_PORT="${BUNNY_SSH_DEVICE_PORT:-44}"
 USER_NAME="${BUNNY_SSH_USER:-root}"
 PASSWORD="${BUNNY_SSH_PASSWORD:-alpine}"
 
 pattern="iproxy .*${LOCAL_PORT} .*${DEVICE_PORT}"
 if ! pgrep -f "$pattern" >/dev/null 2>&1; then
-  log "Starting iproxy $LOCAL_PORT -> $DEVICE_PORT"
+  log "Starting iproxy $LOCAL_PORT -> $DEVICE_PORT (Dropbear)"
   iproxy "$LOCAL_PORT" "$DEVICE_PORT" >/tmp/bunny-iproxy.log 2>&1 &
   echo $! > "$ROOT/.iproxy.pid"
   sleep 1
 fi
 
-echo "SSH: $USER_NAME@127.0.0.1:$LOCAL_PORT"
+echo "SSH: $USER_NAME@127.0.0.1:$LOCAL_PORT (device port $DEVICE_PORT)"
 if command -v sshpass >/dev/null 2>&1; then
   SSHPASS="$PASSWORD" sshpass -e ssh \
     -o StrictHostKeyChecking=no \
