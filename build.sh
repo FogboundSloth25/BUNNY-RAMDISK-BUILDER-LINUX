@@ -374,6 +374,13 @@ done
 extract_raw "$WORK/iBEC.im4p" "$WORK/iBEC.raw"
 extract_raw "$WORK/KernelCache.im4p" "$WORK/kernelcache.raw"
 (( USE_IBSS )) && extract_raw "$WORK/iBSS.im4p" "$WORK/iBSS.raw"
+if (( USE_IBSS )); then
+  iBSS_HASH="$(sha256sum "$WORK/iBSS.raw" | awk '{print $1}')"
+  iBEC_HASH="$(sha256sum "$WORK/iBEC.raw" | awk '{print $1}')"
+  echo "iBSS SHA256: $iBSS_HASH"
+  echo "iBEC SHA256: $iBEC_HASH"
+  [[ "$iBSS_HASH" != "$iBEC_HASH" ]] || die "iBSS and iBEC payloads are identical; refusing ambiguous bootchain"
+fi
 [[ -f "$WORK/SPTM.im4p" ]] && extract_raw "$WORK/SPTM.im4p" "$WORK/SPTM.raw"
 [[ -f "$WORK/TXM.im4p" ]] && extract_raw "$WORK/TXM.im4p" "$WORK/TXM.raw"
 
