@@ -313,7 +313,11 @@ mkdir -p "$WORK" "$BOOT"
 for key in iBEC KernelCache DeviceTree RestoreTrustCache; do
   cp "$CACHE/$(basename "$(path_for "$key")")" "$WORK/$key.im4p"
 done
-cp "$CACHE/$(basename "$(path_for RestoreRamDisk)")" "$WORK/RestoreRamDisk.dmg"
+RESTORE_RAMDISK_SRC="$CACHE/$(basename "$(path_for RestoreRamDisk)")"
+[[ -s "$RESTORE_RAMDISK_SRC" ]] || die "RestoreRamDisk payload missing: $RESTORE_RAMDISK_SRC"
+log "Extracting RestoreRamDisk IM4P payload"
+extract_raw "$RESTORE_RAMDISK_SRC" "$WORK/RestoreRamDisk.dmg"
+[[ -s "$WORK/RestoreRamDisk.dmg" ]] || die "RestoreRamDisk payload extraction failed"
 (( USE_IBSS )) && cp "$CACHE/$(basename "$(path_for iBSS)")" "$WORK/iBSS.im4p"
 
 for key in AOP ANE AVE ISP GFX SIO SPTM TXM; do
