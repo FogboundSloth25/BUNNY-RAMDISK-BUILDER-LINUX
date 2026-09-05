@@ -117,14 +117,17 @@ APFS_PROGS_STAGE="$(mktemp -d /tmp/bunny-apfsprogs.XXXXXX)"
 cleanup_apfsprogs() { rm -rf "$APFS_PROGS_STAGE"; }
 trap cleanup_apfsprogs EXIT INT TERM
 rsync -a --exclude='.git' "$APFSPROGS/" "$APFS_PROGS_STAGE/"
+APFS_COMMIT="$(git -C "$APFSPROGS" rev-parse HEAD)"
 
 (
   cd "$APFS_PROGS_STAGE/mkapfs"
-  printf '#define GIT_COMMIT\t"bunny-linux"\n' > version.h
+  printf '#define GIT_COMMIT\t"%s"\n' "$APFS_COMMIT" > version.h
   make -j"$(nproc)"
 )
 
 [[ -x "$APFS_PROGS_STAGE/mkapfs/mkapfs" ]] || die "mkapfs build finished without executable"
+MKAPFS_VERSION="$("$APFS_PROGS_STAGE/mkapfs/mkapfs" -v)"
+[[ "$MKAPFS_VERSION" == "mkapfs $APFS_COMMIT" ]] || die "mkapfs version self-test failed: $MKAPFS_VERSION"
 install -m 0755 "$APFS_PROGS_STAGE/mkapfs/mkapfs" "$BUNNY_TOOLS/mkapfs"
 
 log "Fetching default A12/A13 IM4M resources"
