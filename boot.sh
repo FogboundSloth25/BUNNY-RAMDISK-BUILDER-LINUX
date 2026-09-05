@@ -146,7 +146,7 @@ send_fw() {
 # Match the proven iBSS/Option-B sequence used by ICH/BUNNY:
 # SPTM/TXM (when present) -> DeviceTree -> TrustCache -> RestoreRamDisk
 # -> coprocessor firmware -> kernel -> setenvnp boot-args -> bootx.
-if [[ -z "$BOOT/iBSS.patched.raw" ]]; then
+if [[ ! -s "$BOOT/iBSS.patched.raw" ]]; then
   [[ -f "$BOOT/sptm.img4" ]] && send_fw "sptm"
   [[ -f "$BOOT/txm.img4" ]] && send_fw "txm"
 fi
