@@ -365,7 +365,7 @@ PY
   # iBoot/iBEC patchfinders consume a raw executable image, not necessarily
   # a Mach-O container. The first word may therefore be an ARM64 instruction
   # (for example 0x90000000 = ADRP X0, #0) rather than a Mach-O magic.
-
+}
 
 extract_raw "$WORK/iBEC.im4p" "$WORK/iBEC.raw"
 extract_raw "$WORK/KernelCache.im4p" "$WORK/kernelcache.raw"
