@@ -239,10 +239,18 @@ if not ids:
     raise SystemExit("no BuildIdentity for board "+board)
 x=ids[0]
 out={"build":x.get("Info",{}).get("BuildNumber","")}
-for name in ["iBEC","iBSS","KernelCache","DeviceTree","RestoreRamDisk","RestoreTrustCache","AOP","ANE","AVE","ISP","GFX","SIO","SPTM","TXM","RestoreSEP"]:
+for name in ["iBEC","iBSS","KernelCache","DeviceTree","RestoreRamDisk","RestoreTrustCache","AOP","ANE","AVE","ISP","GFX","SIO","SPTM","TXM"]:
     item=x.get("Manifest",{}).get(name,{})
     path=item.get("Info",{}).get("Path")
     if path: out[name]=path
+
+# RestoreSEP has appeared under several Manifest keys across restore generations.
+for alias in ["RestoreSEP","SEP","SepFirmware","SEPFirmware","RestoreSepFirmware","rsepfirmware"]:
+    item=x.get("Manifest",{}).get(alias,{})
+    path=item.get("Info",{}).get("Path")
+    if path:
+        out["RestoreSEP"]=path
+        break
 print(json.dumps(out))
 PY
 )"
