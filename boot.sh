@@ -95,10 +95,6 @@ show_state "AFTER iBEC GO"
 log "Setting display debug background"
 irecovery -c "bgcolor 0 127 127" || true
 
-log "Sending DeviceTree"
-irecovery -f "$BOOT/devicetree.img4"
-irecovery -c devicetree
-
 send_fw() {
   local key="$1" f="$BOOT/$1.img4"
   [[ -s "$f" ]] || return 0
