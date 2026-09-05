@@ -566,13 +566,11 @@ if (( USE_IBSS )); then
 fi
 
 if [[ "$KERNEL_MODE" == patched ]]; then
-  log "Patching kernel"
+  log "Patching kernel (minimal iOS 18 A12/A13 set)"
   KERNEL_LOG="$WORK/kernel-patch.log"
-  "$PY" "$BUNNY_PATCH/kernel_patchfinder.py" "$WORK/kernelcache.raw" --apply "$WORK/kernelcache.patched.raw" | tee "$KERNEL_LOG"
-  if ! grep -Eq "FOUND:[[:space:]]*[1-9][0-9]* targets|[1-9][0-9]* targets" "$KERNEL_LOG"; then
-    echo "[x] kernel patchfinder found no applicable targets for $PRODUCT $VERSION $BUILD" >&2
-    exit 1
-  fi
+  "$PY" "$ROOT/scripts/apply_ios18_kernel_patches.py"     "$WORK/kernelcache.raw" "$WORK/kernelcache.patched.raw" | tee "$KERNEL_LOG"
+  grep -Fq "iOS 18 minimal kernel patch set: 6 instructions, 24 bytes" "$KERNEL_LOG" ||
+    die "iOS 18 kernel patch invariant failed"
 else
   cp "$WORK/kernelcache.raw" "$WORK/kernelcache.patched.raw"
 fi
