@@ -10,6 +10,7 @@ detect_fs() {
   "$ROOT/.venv/bin/python" - "$1" <<'PY'
 from pathlib import Path
 import mmap
+import os
 import struct
 import sys
 
@@ -21,9 +22,6 @@ if size == 0:
 with p.open("rb") as f:
     mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
 
-    # APFS container superblock (NXSB): magic is at +0x20 from the
-    # container/block start.  Validate block size/count as well as alignment
-    # so a random occurrence of "NXSB" cannot become a mount offset.
     pos = mm.find(b"NXSB")
     while pos >= 0:
         start = pos - 0x20
@@ -40,18 +38,14 @@ with p.open("rb") as f:
                 raise SystemExit
         pos = mm.find(b"NXSB", pos + 1)
 
-    # HFS+ is retained only as an explicit legacy fallback.  The build
-    # pipeline sets BUNNY_IOS_VERSION, so modern iOS builds never silently
-    # fall back to HFS+ after a failed APFS probe.
-    allow_hfs = __import__("os").environ.get("BUNNY_ALLOW_HFSPLUS") == "1"
-    if allow_hfs:
+    # HFS+ is retained only as an explicit legacy fallback. Modern iOS builds
+    # therefore cannot silently become HFS+ after a failed APFS probe.
+    if os.environ.get("BUNNY_ALLOW_HFSPLUS") == "1":
         for sig in (b"H+", b"HX"):
             pos = mm.find(sig)
             while pos >= 0:
                 start = pos - 1024
-                if start >= 0 and start % 512 == 0 and start + 1026 <= size:
-                    # HFS+ volume header has signature at offset 1024 and
-                    # version 4 at +1026.
+                if start >= 0 and start % 512 == 0 and start + 1028 <= size:
                     version = struct.unpack_from(">H", mm, start + 1026)[0]
                     if version == 4:
                         print(f"hfsplus {start}")
@@ -81,52 +75,72 @@ load_apfs() {
 
 mount_image() {
   local image="$1" mountpoint="$2" mode="$3" fstype="$4" offset="$5"
-  local loopdev=""
+  local loopdev="" statefile="${mountpoint}.bunny-loopdev"
 
   mkdir -p "$mountpoint"
+  rm -f "$statefile"
 
-  # Using mount -o loop,offset relies on util-linux creating the loop device
-  # with exactly the requested offset.  Explicit losetup makes that state
-  # observable and avoids confusing DMG/container offsets with filesystem
-  # offsets.
+  # Explicit losetup makes the DMG/container offset observable and avoids
+  # depending on mount(8)'s implicit loop-device handling.
   if [[ "$offset" != 0 ]]; then
-    local loop_opts="--find --show"
-    [[ "$mode" == ro ]] && loop_opts+=" --read-only"
-    loopdev="$(sudo losetup $loop_opts --offset "$offset" "$image")"
+    if [[ "$mode" == ro ]]; then
+      loopdev="$(sudo losetup --find --show --read-only --offset "$offset" "$image")"
+    else
+      loopdev="$(sudo losetup --find --show --offset "$offset" "$image")"
+    fi
   else
-    local loop_opts="--find --show"
-    [[ "$mode" == ro ]] && loop_opts+=" --read-only"
-    loopdev="$(sudo losetup $loop_opts "$image")"
+    if [[ "$mode" == ro ]]; then
+      loopdev="$(sudo losetup --find --show --read-only "$image")"
+    else
+      loopdev="$(sudo losetup --find --show "$image")"
+    fi
   fi
 
   if [[ "$fstype" == apfs ]]; then
     if [[ "$mode" == rw ]]; then
-      sudo mount -t apfs -o readwrite "$loopdev" "$mountpoint"
+      if ! sudo mount -t apfs -o readwrite "$loopdev" "$mountpoint"; then
+        sudo losetup -d "$loopdev" 2>/dev/null || true
+        die "failed to mount APFS image: $image (offset=$offset)"
+      fi
     else
-      sudo mount -t apfs -o ro "$loopdev" "$mountpoint"
+      if ! sudo mount -t apfs -o ro "$loopdev" "$mountpoint"; then
+        sudo losetup -d "$loopdev" 2>/dev/null || true
+        die "failed to mount APFS image read-only: $image (offset=$offset)"
+      fi
+    fi
+  elif [[ "$fstype" == hfsplus ]]; then
+    if [[ "$mode" == rw ]]; then
+      if ! sudo mount -t hfsplus -o rw "$loopdev" "$mountpoint"; then
+        sudo losetup -d "$loopdev" 2>/dev/null || true
+        die "failed to mount HFS+ image: $image (offset=$offset)"
+      fi
+    else
+      if ! sudo mount -t hfsplus -o ro "$loopdev" "$mountpoint"; then
+        sudo losetup -d "$loopdev" 2>/dev/null || true
+        die "failed to mount HFS+ image read-only: $image (offset=$offset)"
+      fi
     fi
   else
-    if [[ "$mode" == rw ]]; then
-      sudo mount -t hfsplus -o rw "$loopdev" "$mountpoint"
-    else
-      sudo mount -t hfsplus -o ro "$loopdev" "$mountpoint"
-    fi
+    sudo losetup -d "$loopdev" 2>/dev/null || true
+    die "unsupported filesystem: $fstype"
   fi
 
-  # Store the loop device for cleanup without changing the caller API.
-  printf '%s\n' "$loopdev" > "$mountpoint/.bunny-loopdev"
+  # State must live beside the mountpoint, never inside the mounted APFS
+  # volume. This also means read-only mounts remain genuinely read-only.
+  printf '%s\n' "$loopdev" > "$statefile"
 }
 
 unmount_image() {
   local mp="$1"
+  local statefile="${mp}.bunny-loopdev"
   local loopdev=""
-  [[ -f "$mp/.bunny-loopdev" ]] && loopdev="$(<"$mp/.bunny-loopdev")"
 
+  [[ -f "$statefile" ]] && loopdev="$(<"$statefile")"
   sudo umount "$mp" 2>/dev/null || true
   if [[ -n "$loopdev" ]]; then
     sudo losetup -d "$loopdev" 2>/dev/null || true
   fi
-  rm -f "$mp/.bunny-loopdev"
+  rm -f "$statefile"
 }
 
 inject_apfs() {
@@ -169,9 +183,7 @@ inject_apfs() {
   sudo tar --xattrs --acls --numeric-owner -xpf "$ssh_tar" -C "$dst_mp"
   sync
 
-  # The generated filesystem must be mountable before we call the injection
-  # successful.  The RETURN trap will unmount it after this function returns.
-  [[ -f "$dst_mp/.bunny-loopdev" ]] || die "APFS destination loop device missing"
+  [[ -s "${dst_mp}.bunny-loopdev" ]] || die "APFS destination loop device missing"
 }
 
 inject_hfsplus() {
