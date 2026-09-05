@@ -740,7 +740,7 @@ fi
 [[ -s "$LOGO_SOURCE" ]] || die "boot logo source is empty: $LOGO_SOURCE"
 
 log "Building boot logo from $(basename "$LOGO_SOURCE")"
-"$ROOT/scripts/make_logo.sh" "$LOGO_SOURCE" --out "$BOOT/logo.img4"
+"$BASH" "$ROOT/scripts/make_logo.sh" "$LOGO_SOURCE" --out "$BOOT/logo.img4"
 [[ -s "$BOOT/logo.img4" ]] || die "boot logo generation produced no IMG4"
 
 "$PY" - "$BOOT/logo.img4" <<'PY'
