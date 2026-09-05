@@ -78,7 +78,7 @@ jobs:
           rm -rf "$stage"
           mkdir -p "$stage"
           rsync -a "$src/" "$stage/"
-          commit="$(git -C "$src" rev-parse HEAD)"
+          commit="$(git -C "$src" describe --always HEAD | tail -c 9)"
           printf '#define GIT_COMMIT\t"%s"\n' "$commit" > "$stage/mkapfs/version.h"
           make -C "$stage/mkapfs" -j"$(nproc)"
           test -x "$stage/mkapfs/mkapfs"
