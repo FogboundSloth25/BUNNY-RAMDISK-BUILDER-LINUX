@@ -477,6 +477,14 @@ done
 
 extract_raw "$WORK/iBEC.im4p" "$WORK/iBEC.raw"
 extract_raw "$WORK/KernelCache.im4p" "$WORK/kernelcache.raw"
+
+# Keep a decompressed IM4P container as the input to the IMG4 patching stage.
+# kerneldiff compares raw Mach-O bytes, but img4 -P operates on an IM4P
+# container (the reference workflow calls this kernelcache.dec).
+rm -f "$WORK/kernelcache.dec"
+"$IMG4" -i "$WORK/KernelCache.im4p" -o "$WORK/kernelcache.dec" -D
+[[ -s "$WORK/kernelcache.dec" ]] || die "failed to create decompressed kernel IM4P: $WORK/kernelcache.dec"
+
 (( USE_IBSS )) && extract_raw "$WORK/iBSS.im4p" "$WORK/iBSS.raw"
 if (( USE_IBSS )); then
   iBSS_SIZE="$(stat -c %s "$WORK/iBSS.raw")"
@@ -570,7 +578,7 @@ echo "kc.bpatch: $PATCH_COUNT byte patches"
 # and the resulting rkrn artifact would not contain a Mach-O kernel.
 # Upstream Linux SSHRD follows the same model: original kernelcache IM4P
 # + kc.bpatch property + -J, rather than passing the raw Mach-O to img4.
-"$IMG4" -i "$WORK/kernelcache.raw"   -o "$BOOT/kernelcache.img4.patched"   -M "$IM4M"   -T rkrn   -P "$WORK/kc.bpatch"
+"$IMG4" -i "$WORK/kernelcache.dec"   -o "$BOOT/kernelcache.img4.patched"   -M "$IM4M"   -T rkrn   -P "$WORK/kc.bpatch"
 
 # Validate the exact artifact iBoot will receive: rkrn IM4P + Mach-O payload
 # + a non-empty krnl/bpatch property.
