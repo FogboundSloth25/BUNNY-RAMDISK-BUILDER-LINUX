@@ -322,13 +322,34 @@ done
 
 extract_raw() {
   local in="$1" out="$2"
+  rm -f "$out"
+
+  # ipsw's IM4P extractor handles decompression and, when keys are available,
+  # AES decryption through the keybag database. This is required for older
+  # signed/encrypted firmware payloads and is safer than reading payload.data
+  # directly with pyimg4.
+  if ipsw img4 im4p extract --lookup \
+      --lookup-device "$PRODUCT" \
+      --lookup-build "$BUILD" \
+      --output "$out" "$in"; then
+    [[ -s "$out" ]] || die "ipsw produced an empty decrypted payload: $in"
+    return 0
+  fi
+
+  # Fallback for payloads that are already plain/decompressed.
   "$PY" - "$in" "$out" <<'PY'
 import sys
 from pathlib import Path
 from pyimg4 import IM4P
-src,out=map(Path,sys.argv[1:])
-out.write_bytes(IM4P(src.read_bytes()).payload.data)
+
+src, out = map(Path, sys.argv[1:])
+item = IM4P(src.read_bytes())
+data = item.payload.data
+if not data:
+    raise SystemExit(f"empty IM4P payload: {src}")
+out.write_bytes(data)
 PY
+  [[ -s "$out" ]] || die "empty extracted payload: $out"
 }
 
 extract_raw "$WORK/iBEC.im4p" "$WORK/iBEC.raw"
