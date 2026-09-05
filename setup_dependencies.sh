@@ -18,20 +18,21 @@ echo "Detected: $ID_LC"
 case "$ID_LC" in
   debian|ubuntu)
     sudo apt-get update
-    sudo apt-get install -y bash ca-certificates curl git jq unzip xz-utils zip \
+    sudo apt-get install -y bash ca-certificates curl git jq unzip xz-utils zip golang \
       python3 python3-venv python3-pip python3-dev \
-      build-essential pkg-config autoconf automake libtool \
+      build-essential pkg-config autoconf automake libtool gettext \
       libusb-1.0-0-dev libplist-dev libreadline-dev uuid-dev \
       libssl-dev fuse3 rsync tar sshpass
     ;;
   fedora)
-    sudo dnf install -y bash ca-certificates curl git jq unzip xz zip \
+    sudo dnf install -y bash ca-certificates curl git jq unzip xz zip golang \
       python3 python3-pip python3-devel gcc gcc-c++ make pkgconf \
-      autoconf automake libtool libusb1-devel libplist-devel \
-      readline-devel libuuid-devel openssl-devel fuse3 rsync tar sshpass
+      autoconf automake libtool gettext \
+      libusb1-devel libplist-devel readline-devel libuuid-devel \
+      openssl-devel fuse3 rsync tar sshpass
     ;;
   arch)
-    sudo pacman -Sy --needed --noconfirm bash ca-certificates curl git jq unzip xz zip \
+    sudo pacman -Sy --needed --noconfirm bash ca-certificates curl git jq unzip xz zip go gettext \
       python python-pip base-devel pkgconf autoconf automake libtool \
       libusb libplist readline libuuid openssl fuse3 rsync tar sshpass
     ;;
@@ -48,7 +49,7 @@ python3 -m venv "$ROOT/.venv"
 "$ROOT/.venv/bin/python" -m pip install -r "$ROOT/requirements.txt"
 
 if ! command -v ipsw >/dev/null 2>&1; then
-  command -v go >/dev/null 2>&1 || die "Go 1.21+ is required for blacktop/ipsw"
+  command -v go >/dev/null 2>&1 || die "Go was not installed correctly"
   GOTOOLCHAIN=auto go install github.com/blacktop/ipsw@master
   [[ -x "$HOME/go/bin/ipsw" ]] || die "ipsw build succeeded but executable was not found"
   ln -sf "$HOME/go/bin/ipsw" "$BUNNY_TOOLS/ipsw"
