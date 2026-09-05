@@ -9,48 +9,26 @@ from pathlib import Path
 import sys
 
 p = Path(sys.argv[1])
-limit = 16 * 1024 * 1024
-chunk = 1024 * 1024
+limit = min(p.stat().st_size, 32 * 1024 * 1024)
+data = p.read_bytes()[:limit]
 
-with p.open("rb") as f:
-    data = b""
-    base = 0
-    while base < limit:
-        part = f.read(chunk)
-        if not part:
-            break
-        data += part
-        pos = data.find(b"NXSB")
-        while pos >= 0:
-            # APFS NXSB magic is 0x20 bytes into the 4096-byte container block.
-            start = base + pos - 0x20
-            if start >= 0 and start % 4096 == 0:
-                print(f"apfs {start}")
-                raise SystemExit
-            pos = data.find(b"NXSB", pos + 1)
-        base += len(part)
-        # Keep overlap so a signature crossing chunk boundaries is not missed.
-        data = data[-4096:]
+# APFS: NXSB magic is 0x20 bytes into a 4096-byte container superblock.
+for pos in range(0, len(data) - 4):
+    if data[pos:pos+4] == b"NXSB":
+        start = pos - 0x20
+        if start >= 0 and start % 4096 == 0:
+            print(f"apfs {start}")
+            raise SystemExit
 
-with p.open("rb") as f:
-    data = b""
-    base = 0
-    while base < limit:
-        part = f.read(chunk)
-        if not part:
-            break
-        data += part
-        for sig in (b"H+", b"HX"):
-            pos = data.find(sig)
-            while pos >= 0:
-                # HFS+ volume signature is at +1024 from the volume start.
-                start = base + pos - 1024
-                if start >= 0 and start % 512 == 0:
-                    print(f"hfsplus {start}")
-                    raise SystemExit
-                pos = data.find(sig, pos + 1)
-        base += len(part)
-        data = data[-4096:]
+# HFS+/HFSX: signature is at +1024 from volume start.
+for sig in (b"H+", b"HX"):
+    pos = data.find(sig)
+    while pos >= 0:
+        start = pos - 1024
+        if start >= 0 and start % 512 == 0:
+            print(f"hfsplus {start}")
+            raise SystemExit
+        pos = data.find(sig, pos + 1)
 
 raise SystemExit("unknown")
 PY
@@ -80,9 +58,9 @@ mount_image() {
   [[ "$offset" != 0 ]] && opts+=",offset=$offset"
 
   if [[ "$fstype" == apfs ]]; then
-    mount -t apfs -o "$opts" "$image" "$mountpoint"
+    sudo mount -t apfs -o "$opts" "$image" "$mountpoint"
   else
-    mount -t hfsplus -o "$opts" "$image" "$mountpoint"
+    sudo mount -t hfsplus -o "$opts" "$image" "$mountpoint"
   fi
 }
 
