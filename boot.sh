@@ -57,16 +57,23 @@ require_file "$BOOT/kernelcache.img4.patched"
 log "Loading patched iBSS"
 usbliter8ctl boot "$BOOT/iBSS.patched.raw"
 wait_device 5000 || die "iPhone did not reappear after iBSS"
+echo "==> Device after iBSS"
+irecovery -q || true
 
 log "Sending patched iBEC"
 irecovery -f "$BOOT/iBEC.patched.img4"
 log "Starting patched iBEC"
 irecovery -c go
 wait_device 8000 || die "iPhone did not reappear after iBEC"
+echo "==> Device after iBEC"
+irecovery -q || true
 
 log "Setting boot args"
 irecovery -c "setenv boot-args rd=md0 -v serial=3 debug=0x2014e wdt=-1"
 irecovery -c "setenv auto-boot false"
+
+echo "==> Boot arguments currently visible to iBoot"
+irecovery -q || true
 
 log "Sending DeviceTree"
 irecovery -f "$BOOT/devicetree.img4"
@@ -93,5 +100,8 @@ irecovery -f "$BOOT/kernelcache.img4.patched"
 
 log "Booting patched kernel"
 irecovery -c bootx
+sleep 0.5
+echo "==> Device state after bootx"
+irecovery -q || true
 
 echo "Boot command sent. Check the display for verbose output, then run ./ssh.sh when SSH is available."
