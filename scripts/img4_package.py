@@ -26,7 +26,7 @@ if args.raw:
     )
     for prop in (template.properties if template else []) or []:
         item.add_property(PayloadProperty(fourcc=prop.fourcc, value=prop.value))
-    if args.lzfse:
+    if args.lzfse or (template and template.payload.compression != Compression.NONE):
         item.payload.compress(Compression.LZFSE)
 else:
     item = template
