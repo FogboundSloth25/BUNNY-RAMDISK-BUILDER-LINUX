@@ -8,20 +8,39 @@ need_cmd ssh
 
 start_usbmuxd() {
   [[ "${BUNNY_USBMUX_AUTOSTART:-1}" == 1 ]] || return 0
-  if command -v usbmuxd >/dev/null 2>&1; then
-    if ! pgrep -x usbmuxd >/dev/null 2>&1; then
-      log "Starting usbmuxd"
-      if [[ -x /usr/sbin/usbmuxd ]]; then
-        sudo /usr/sbin/usbmuxd >/tmp/bunny-usbmuxd.log 2>&1 &
-      else
-        sudo usbmuxd >/tmp/bunny-usbmuxd.log 2>&1 &
-      fi
-      for _ in {1..20}; do
-        pgrep -x usbmuxd >/dev/null 2>&1 && break
-        sleep 0.1
-      done
+  command -v usbmuxd >/dev/null 2>&1 || return 0
+
+  # Bunny ramdisk intentionally has no Apple lockdownd service on TCP 62078.
+  # Normal usbmuxd preflight therefore loops with ECONNREFUSED (device errno 61).
+  # Disable preflight for this ramdisk session; USB mux transport remains active.
+  if pgrep -x usbmuxd >/dev/null 2>&1; then
+    if pgrep -af "usbmuxd.*(-p|--no-preflight)" >/dev/null 2>&1; then
+      return 0
     fi
+
+    log "Restarting usbmuxd with --no-preflight for Bunny ramdisk"
+    sudo pkill -TERM -x usbmuxd 2>/dev/null || true
+    for _ in {1..30}; do
+      pgrep -x usbmuxd >/dev/null 2>&1 || break
+      sleep 0.1
+    done
   fi
+
+  log "Starting usbmuxd with --no-preflight"
+  if [[ -x /usr/sbin/usbmuxd ]]; then
+    sudo /usr/sbin/usbmuxd -f -p >/tmp/bunny-usbmuxd.log 2>&1 &
+  else
+    sudo usbmuxd -f -p >/tmp/bunny-usbmuxd.log 2>&1 &
+  fi
+
+  for _ in {1..30}; do
+    if pgrep -x usbmuxd >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+
+  die "usbmuxd did not start with --no-preflight; see /tmp/bunny-usbmuxd.log"
 }
 
 wait_usb_recovery() {
