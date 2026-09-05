@@ -719,7 +719,7 @@ if (( INJECT_SSH )); then
   [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "restored_external download is empty"
 
   SSH_STAGE="$WORK/ssh-stage"
-  prepare_ssh_tree "$SSH_TAR" "$SSH_STAGE"
+  prepare_ssh_tree "$SSH_TAR" "$SSH_LIST" "$SSH_STAGE"
   verify_ssh_allowlist "$SSH_STAGE" "$SSH_LIST"
 
   # The ICH restored_external replaces the archive copy. Put the exact final
