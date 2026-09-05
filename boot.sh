@@ -150,9 +150,11 @@ send_fw() {
 # Match the proven iBSS/Option-B sequence used by ICH/BUNNY:
 # SPTM/TXM (when present) -> DeviceTree -> TrustCache -> RestoreRamDisk
 # -> coprocessor firmware -> kernel -> setenvnp boot-args -> bootx.
-if [[ ! -s "$BOOT/iBSS.patched.raw" ]]; then
-  [[ -f "$BOOT/sptm.img4" ]] && send_fw "sptm"
-  [[ -f "$BOOT/txm.img4" ]] && send_fw "txm"
+if [[ -f "$BOOT/sptm.img4" ]]; then
+  send_fw "sptm"
+fi
+if [[ -f "$BOOT/txm.img4" ]]; then
+  send_fw "txm"
 fi
 
 if (( USE_SEP < 0 )); then
@@ -166,6 +168,16 @@ if (( USE_SEP )); then
   show_state "AFTER RESTORESEP"
 else
   echo "==> RestoreSEP disabled (--no-sep)"
+fi
+
+# Direct-iBEC path follows the proven A12/A13 order used by ICH:
+# RestoreSEP -> coprocessor firmware -> DeviceTree -> TrustCache -> ramdisk.
+# Missing firmware is a build-time problem, not something to silently skip.
+if [[ ! -s "$BOOT/iBSS.patched.raw" ]]; then
+  for key in AOP ANE AVE ISP GFX SIO; do
+    [[ -s "$BOOT/$key.img4" ]] || die "required $key firmware is missing from bootchain"
+    send_fw "$key"
+  done
 fi
 
 log "Sending DeviceTree"
@@ -187,7 +199,8 @@ irecovery -c ramdisk
 show_state "AFTER RAMDISK"
 
 if [[ -s "$BOOT/iBSS.patched.raw" ]]; then
-  for key in sptm txm AOP ANE AVE ISP GFX SIO; do
+  # Explicit iBSS/Option-B path: firmware is sent after the ramdisk.
+  for key in AOP ANE AVE ISP GFX SIO; do
     [[ -s "$BOOT/$key.img4" ]] && send_fw "$key"
   done
 fi
