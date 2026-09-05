@@ -83,10 +83,10 @@ if ! command -v iproxy >/dev/null 2>&1; then
 fi
 
 log "Fetching A12/A13 patchfinders and usbliter8ctl"
-curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/iboot_patchfinder.py -o "$BUNNY_PATCH/iboot_patchfinder.py"
-curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/kernel_patchfinder.py -o "$BUNNY_PATCH/kernel_patchfinder.py"
-curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/sptm_patchfinder.py -o "$BUNNY_PATCH/sptm_patchfinder.py"
-curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/txm_patchfinder.py -o "$BUNNY_PATCH/txm_patchfinder.py"
+curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8-iboot-patchfinder/main/iboot_patchfinder.py -o "$BUNNY_PATCH/iboot_patchfinder.py"
+curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8-kernel-patchfinder/main/kernel_patchfinder.py -o "$BUNNY_PATCH/kernel_patchfinder.py"
+curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8-sptm-patchfinder/main/sptm_patchfinder.py -o "$BUNNY_PATCH/sptm_patchfinder.py"
+curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8-txm-patchfinder/main/txm_patchfinder.py -o "$BUNNY_PATCH/txm_patchfinder.py"
 curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/usbliter8ctl -o "$BUNNY_TOOLS/usbliter8ctl"
 chmod 755 "$BUNNY_PATCH"/*.py "$BUNNY_TOOLS/usbliter8ctl"
 
