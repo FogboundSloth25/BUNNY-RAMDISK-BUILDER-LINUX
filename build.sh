@@ -339,7 +339,14 @@ if (( DRY_RUN )); then
 fi
 
 log "Patching iBEC"
-"$PY" "$BUNNY_PATCH/iboot_patchfinder.py" "$WORK/iBEC.raw" "$WORK/iBEC.patched.raw" --mode ibec
+IBOOT_LOG="$WORK/ibec-patch.log"
+"$PY" "$BUNNY_PATCH/iboot_patchfinder.py" "$WORK/iBEC.raw" "$WORK/iBEC.patched.raw" --mode ibec | tee "$IBOOT_LOG"
+if ! grep -Eq '[1-9][0-9]* patches?, [1-9][0-9]* functions found|[1-9][0-9]* patches' "$IBOOT_LOG"; then
+  echo "[x] iBEC patchfinder found no applicable patches for $PRODUCT $VERSION $BUILD" >&2
+  echo "    This firmware is not confirmed by the selected patchfinder; refusing to continue with an unchanged iBEC." >&2
+  exit 1
+fi
+[[ -s "$WORK/iBEC.patched.raw" ]] || die "iBEC patchfinder produced no output"
 
 if (( USE_IBSS )); then
   log "Patching iBSS"
@@ -349,7 +356,12 @@ fi
 
 if [[ "$KERNEL_MODE" == patched ]]; then
   log "Patching kernel"
-  "$PY" "$BUNNY_PATCH/kernel_patchfinder.py" "$WORK/kernelcache.raw" --apply "$WORK/kernelcache.patched.raw"
+  KERNEL_LOG="$WORK/kernel-patch.log"
+  "$PY" "$BUNNY_PATCH/kernel_patchfinder.py" "$WORK/kernelcache.raw" --apply "$WORK/kernelcache.patched.raw" | tee "$KERNEL_LOG"
+  if ! grep -Eq "FOUND:[[:space:]]*[1-9][0-9]* targets|[1-9][0-9]* targets" "$KERNEL_LOG"; then
+    echo "[x] kernel patchfinder found no applicable targets for $PRODUCT $VERSION $BUILD" >&2
+    exit 1
+  fi
 else
   cp "$WORK/kernelcache.raw" "$WORK/kernelcache.patched.raw"
 fi
