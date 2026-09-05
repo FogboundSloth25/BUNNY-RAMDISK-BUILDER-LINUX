@@ -78,10 +78,12 @@ jobs:
           rm -rf "$stage"
           mkdir -p "$stage"
           rsync -a --exclude='.git' "$src/" "$stage/"
-          printf '#define GIT_COMMIT\t"ci"\n' > "$stage/mkapfs/version.h"
+          commit="$(git -C "$src" rev-parse HEAD)"
+          printf '#define GIT_COMMIT\t"%s"\n' "$commit" > "$stage/mkapfs/version.h"
           make -C "$stage/mkapfs" -j"$(nproc)"
           test -x "$stage/mkapfs/mkapfs"
-          "$stage/mkapfs/mkapfs" -v
+          version="$($stage/mkapfs/mkapfs -v)"
+          test "$version" = "mkapfs $commit"
 
   userspace:
     runs-on: ubuntu-latest
