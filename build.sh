@@ -679,6 +679,22 @@ PY
 "$IMG4" -i "$WORK/RestoreTrustCache.im4p" -o "$WORK/trustcache.bin"
 [[ -s "$WORK/trustcache.bin" ]] || die "failed to extract RestoreTrustCache"
 
+if (( WITH_SEP )); then
+  [[ -s "$WORK/RestoreSEP.im4p" ]] || die "RestoreSEP extraction missing: $WORK/RestoreSEP.im4p"
+  "$IMG4" -i "$WORK/RestoreSEP.im4p" -o "$BOOT/sep-firmware.img4" -M "$IM4M" -T rsep
+  [[ -s "$BOOT/sep-firmware.img4" ]] || die "RestoreSEP packaging failed"
+  echo "RestoreSEP packaged: $BOOT/sep-firmware.img4"
+fi
+
+if [[ -f "$WORK/SPTM.im4p" ]]; then
+  "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/SPTM.im4p" --output "$BOOT/sptm.img4" --im4m "$IM4M"
+fi
+if [[ -f "$WORK/TXM.im4p" ]]; then
+  "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/TXM.im4p" --output "$BOOT/txm.img4" --im4m "$IM4M"
+fi
+
+
+
 if (( INJECT_SSH )); then
   mkdir -p "$BUNNY_RESOURCES"
 
