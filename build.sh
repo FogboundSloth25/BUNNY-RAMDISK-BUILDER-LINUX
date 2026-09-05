@@ -713,10 +713,10 @@ if (( INJECT_SSH )); then
   [[ -s "$SSH_LIST" ]] || die "SSH payload allowlist is empty"
 
   BUNNY_RESTORED_EXTERNAL="$BUNNY_RESOURCES/restored_external"
-  if [[ ! -s "$BUNNY_RESTORED_EXTERNAL" ]]; then
-    curl --fail --show-error --location --retry 8 --retry-all-errors       --connect-timeout 20 --speed-time 60 --speed-limit 1024       -o "$BUNNY_RESTORED_EXTERNAL"       https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/restored_external
-  fi
-  [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "restored_external download is empty"
+  # Always use the repository-owned entrypoint. Do not retain an old downloaded
+  # script from a previous build: that would make SSH behavior non-reproducible.
+  install -m 0755 "$ROOT/resources/restored_external" "$BUNNY_RESTORED_EXTERNAL"
+  [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "restored_external is empty"
 
   SSH_STAGE="$WORK/ssh-stage"
   prepare_ssh_tree "$SSH_TAR" "$SSH_LIST" "$SSH_STAGE"
