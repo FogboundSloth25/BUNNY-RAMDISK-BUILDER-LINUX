@@ -599,8 +599,8 @@ if patch_path.stat().st_size == 0:
 print(f"kernel IMG4 verified: rkrn, stock Mach-O payload={len(data)} bytes, krnl property present")
 PY
 
-"$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/DeviceTree.im4p" --output "$BOOT/devicetree.img4" --im4m "$IM4M"
-"$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/RestoreTrustCache.im4p" --output "$BOOT/trustcache.img4" --im4m "$IM4M"
+"$IMG4" -i "$WORK/DeviceTree.im4p" -o "$BOOT/devicetree.img4" -M "$IM4M" -T rdtr
+"$IMG4" -i "$WORK/RestoreTrustCache.im4p" -o "$BOOT/trustcache.img4" -M "$IM4M" -T rtsc
 
 if (( WITH_SEP )); then
   [[ -s "$WORK/RestoreSEP.im4p" ]] || die "RestoreSEP extraction missing: $WORK/RestoreSEP.im4p"
