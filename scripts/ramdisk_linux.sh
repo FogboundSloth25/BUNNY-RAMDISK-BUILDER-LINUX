@@ -6,29 +6,36 @@ ROOT="${BUNNY_ROOT:?BUNNY_ROOT must be set by env.sh}"
 detect_fs() {
   "$ROOT/.venv/bin/python" - "$1" <<'PY'
 from pathlib import Path
+import mmap
 import sys
 
 p = Path(sys.argv[1])
-limit = min(p.stat().st_size, 32 * 1024 * 1024)
-data = p.read_bytes()[:limit]
 
-# APFS: NXSB magic is 0x20 bytes into a 4096-byte container superblock.
-for pos in range(0, len(data) - 4):
-    if data[pos:pos+4] == b"NXSB":
+with p.open("rb") as f:
+    if p.stat().st_size == 0:
+        raise SystemExit("unknown")
+    mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+
+    pos = mm.find(b"NXSB")
+    while pos >= 0:
         start = pos - 0x20
         if start >= 0 and start % 4096 == 0:
             print(f"apfs {start}")
+            mm.close()
             raise SystemExit
+        pos = mm.find(b"NXSB", pos + 1)
 
-# HFS+/HFSX: signature is at +1024 from volume start.
-for sig in (b"H+", b"HX"):
-    pos = data.find(sig)
-    while pos >= 0:
-        start = pos - 1024
-        if start >= 0 and start % 512 == 0:
-            print(f"hfsplus {start}")
-            raise SystemExit
-        pos = data.find(sig, pos + 1)
+    for sig in (b"H+", b"HX"):
+        pos = mm.find(sig)
+        while pos >= 0:
+            start = pos - 1024
+            if start >= 0 and start % 512 == 0:
+                print(f"hfsplus {start}")
+                mm.close()
+                raise SystemExit
+            pos = mm.find(sig, pos + 1)
+
+    mm.close()
 
 raise SystemExit("unknown")
 PY
@@ -54,7 +61,11 @@ mount_image() {
   mkdir -p "$mountpoint"
 
   local opts="loop"
-  [[ "$mode" == ro ]] && opts+=",ro"
+  if [[ "$fstype" == apfs && "$mode" == rw ]]; then
+    opts+=",readwrite"
+  elif [[ "$mode" == ro ]]; then
+    opts+=",ro"
+  fi
   [[ "$offset" != 0 ]] && opts+=",offset=$offset"
 
   if [[ "$fstype" == apfs ]]; then
