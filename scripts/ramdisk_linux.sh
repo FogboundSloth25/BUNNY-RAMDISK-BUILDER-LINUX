@@ -290,7 +290,7 @@ inject_apfs() {
     { rm -rf "$ssh_stage"; die "SSH payload injection failed while copying into APFS"; }
   rm -rf "$ssh_stage"
 
-  if [[ -n "$BUNNY_RESTORED_EXTERNAL" && -s "$BUNNY_RESTORED_EXTERNAL" ]]; then
+  if [[ -n "${BUNNY_RESTORED_EXTERNAL:-}" && -s "$BUNNY_RESTORED_EXTERNAL" ]]; then
     sudo install -D -m 0755 "$BUNNY_RESTORED_EXTERNAL"       "$src_mp/usr/local/bin/restored_external" ||
       die "failed to install restored_external"
     echo "    installed ICH restored_external"
