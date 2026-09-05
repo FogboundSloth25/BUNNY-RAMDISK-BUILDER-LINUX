@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 source "$ROOT/env.sh"
 source "$ROOT/scripts/ramdisk_linux.sh"
+IMG4="$ROOT/.local/img4"
 
 usage() {
 cat <<'EOF'
