@@ -148,11 +148,17 @@ download_remote_ipsw() {
   [[ -s "$out" ]] || die "downloaded IPSW is empty"
 
   if [[ -n "$expected" && "$expected" != "null" ]]; then
-    log "Verifying IPSW SHA-256"
-    actual="$(sha256sum "$out" | awk '{print $1}')"
-    [[ "${actual,,}" == "${expected,,}" ]] ||
-      die "IPSW SHA-256 mismatch: expected $expected, got $actual"
-    echo "  SHA256: $actual"
+    local hash_marker="${out}.sha256.ok"
+    if [[ -s "$hash_marker" ]] && grep -Fqx "$expected" "$hash_marker"; then
+      log "SHA-256 already verified; skipping re-hash"
+    else
+      log "Verifying IPSW SHA-256"
+      actual="$(sha256sum "$out" | awk '{print $1}')"
+      [[ "${actual,,}" == "${expected,,}" ]] ||
+        die "IPSW SHA-256 mismatch: expected $expected, got $actual"
+      printf '%s\n' "$expected" > "$hash_marker"
+      echo "  SHA256: $actual"
+    fi
   fi
 
   if command -v zipinfo >/dev/null 2>&1; then
