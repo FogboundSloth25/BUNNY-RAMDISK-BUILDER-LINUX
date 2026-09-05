@@ -203,38 +203,72 @@ unmount_image() {
 
 
 prepare_ssh_tree() {
-  local ssh_tar="$1" out="$2"
+  local ssh_tar="$1" list="$2" out="$3"
   [[ -s "$ssh_tar" ]] || die "missing SSH payload: $ssh_tar"
+  [[ -s "$list" ]] || die "missing SSH payload allowlist: $list"
 
   rm -rf "$out"
   mkdir -p "$out"
 
-  # Fail closed on malformed or path-traversal archive names before extraction.
-  local member
-  while IFS= read -r member; do
-    member="$(printf '%s\n' "$member" | sed 's#^\./##; s#/$##')"
-    [[ -n "$member" ]] || continue
-    case "$member" in
-      /*|../*|*/../*|*/..) die "unsafe SSH archive member: $member" ;;
+  # ssh.tar.gz is a project archive; sshtarlist.txt contains project-root
+  # paths such as work/sshtar/usr/local/bin/dropbear. For injection we must
+  # extract only those files, not the whole archive. The stock RestoreRamDisk
+  # already contains the normal /usr/lib, /usr/share, etc. Copying the whole
+  # archive can exhaust the small APFS ramdisk and also asks the Linux APFS
+  # driver to reproduce metadata it does not support.
+  local tar_list="$out/.tar-members"
+  : > "$tar_list"
+
+  local entry rel member
+  while IFS= read -r entry || [[ -n "$entry" ]]; do
+    entry="$(printf '%s\n' "$entry" | sed -E 's/[[:space:]]*#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//')"
+    [[ -n "$entry" ]] || continue
+
+    case "$entry" in
+      work/sshtar/*)
+        rel="$(printf '%s\n' "$entry" | sed 's#^work/sshtar/##')"
+        ;;
+      /*|../*|*/../*|*/..)
+        die "unsafe SSH allowlist path: $entry"
+        ;;
+      *)
+        rel="$entry"
+        ;;
     esac
-  done < <(tar -tzf "$ssh_tar" 2>/dev/null) ||
-    die "could not list SSH payload archive"
 
-  tar -xzf "$ssh_tar" -C "$out" --no-same-owner --no-acls --no-xattrs --numeric-owner ||
-    die "could not extract SSH payload archive"
+    [[ -n "$rel" ]] || continue
+    case "$rel" in
+      /*|../*|*/../*|*/..) die "unsafe SSH archive member: $rel" ;;
+    esac
+    printf '%s\n' "$rel" >> "$tar_list"
+  done < "$list"
 
-  # Current ICH payloads are normally rooted directly at usr/bin/usr/local.
-  # Accept older wrappers as well and normalize them to the ramdisk root.
-  if [[ -d "$out/work/sshtar" && ! -d "$out/usr" && ! -d "$out/bin" && ! -d "$out/sbin" ]]; then
-    cp -a "$out/work/sshtar/." "$out/" || die "failed to normalize work/sshtar SSH tree"
+  [[ -s "$tar_list" ]] || die "SSH allowlist contains no usable paths"
+
+  # Check that every requested file exists in the archive before touching the
+  # ramdisk. GNU tar's --keep-old-files is deliberately not used: several
+  # SSH payload paths intentionally replace stock utilities.
+  if ! tar -tzf "$ssh_tar" --verbatim-files-from -T "$tar_list" >/dev/null 2>&1; then
+    die "SSH archive does not contain one or more allowlisted files"
+  fi
+
+  sudo tar -xzf "$ssh_tar"     -C "$out"     --verbatim-files-from     --no-same-owner     --no-acls     --no-xattrs     --numeric-owner     --no-overwrite-dir     -T "$tar_list" ||
+    die "could not selectively extract SSH payload"
+
+  # The archive may use project-root paths (work/sshtar/...). Normalize the
+  # extracted tree to the ramdisk root expected by the injection code.
+  if [[ -d "$out/work/sshtar" ]]; then
+    cp -a "$out/work/sshtar/." "$out/" || die "failed to normalize work/sshtar"
     rm -rf "$out/work"
-  elif [[ -d "$out/sshtar" && ! -d "$out/usr" && ! -d "$out/bin" && ! -d "$out/sbin" ]]; then
-    cp -a "$out/sshtar/." "$out/" || die "failed to normalize sshtar SSH tree"
+  fi
+  if [[ -d "$out/sshtar" && ! -d "$out/usr" && ! -d "$out/bin" && ! -d "$out/sbin" ]]; then
+    cp -a "$out/sshtar/." "$out/" || die "failed to normalize sshtar"
     rm -rf "$out/sshtar"
   fi
 
+  rm -f "$tar_list"
   [[ -d "$out/usr" || -d "$out/bin" || -d "$out/sbin" ]] ||
-    die "SSH archive has no expected Unix tree after normalization"
+    die "SSH payload has no expected Unix tree after normalization"
 }
 
 verify_ssh_allowlist() {
@@ -282,8 +316,8 @@ inject_apfs() {
 
   log "Injecting SSH into APFS ramdisk"
   local ssh_list="$BUNNY_RESOURCES/sshtarlist.txt"
-  local ssh_stage="$ROOT/work/ssh-stage-apfs.$$"
-  prepare_ssh_tree "$ssh_tar" "$ssh_stage"
+  local ssh_stage="$ROOT/work/ssh-stage-apfs.$"
+  prepare_ssh_tree "$ssh_tar" "$BUNNY_RESOURCES/sshtarlist.txt" "$ssh_stage"
   verify_ssh_allowlist "$ssh_stage" "$ssh_list"
 
   sudo cp -a "$ssh_stage/." "$src_mp/" ||
@@ -333,7 +367,7 @@ inject_hfsplus() {
 
   log "Injecting SSH"
   local ssh_stage="$ROOT/work/ssh-stage-hfs.$$"
-  prepare_ssh_tree "$ssh_tar" "$ssh_stage"
+  prepare_ssh_tree "$ssh_tar" "$BUNNY_RESOURCES/sshtarlist.txt" "$ssh_stage"
   verify_ssh_allowlist "$ssh_stage" "$BUNNY_RESOURCES/sshtarlist.txt"
   sudo cp -a "$ssh_stage/." "$mp/" || die "SSH payload injection failed"
   rm -rf "$ssh_stage"
