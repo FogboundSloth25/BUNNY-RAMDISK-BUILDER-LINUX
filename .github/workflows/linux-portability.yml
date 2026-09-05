@@ -50,15 +50,17 @@ jobs:
       - name: Install kernel module build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev dwarves rsync git linux-headers-$(uname -r)
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev dwarves rsync git linux-headers-generic
       - name: Build linux-apfs-rw with shared builder
         shell: bash
         run: |
           set -euo pipefail
           src="$RUNNER_TEMP/linux-apfs-rw-src"
           out="$RUNNER_TEMP/apfs.ko"
+          kdir="$(find /lib/modules -mindepth 2 -maxdepth 2 -type d -name build | head -1)"
+          test -n "$kdir"
           git clone --depth 1 https://github.com/linux-apfs/linux-apfs-rw.git "$src"
-          ./scripts/build_apfs_module.sh "$src" "$out"
+          KDIR="$kdir" ./scripts/build_apfs_module.sh "$src" "$out"
           test -s "$out"
           modinfo "$out" >/dev/null
           file "$out"
