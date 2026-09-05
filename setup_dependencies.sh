@@ -107,7 +107,7 @@ APFS_SRC="$BUNNY_THIRD_PARTY/linux-apfs-rw"
 
 KDIR="/lib/modules/$(uname -r)/build"
 [[ -d "$KDIR" ]] || die "Kernel build directory missing: $KDIR"
-"$ROOT/scripts/build_apfs_module.sh" "$APFS_SRC" "$APFS_SRC/apfs.ko"
+bash "$ROOT/scripts/build_apfs_module.sh" "$APFS_SRC" "$APFS_SRC/apfs.ko"
 
 log "Building mkapfs"
 APFSPROGS="$BUNNY_THIRD_PARTY/apfsprogs"
