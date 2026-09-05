@@ -79,7 +79,7 @@ require_file "$BOOT/ramdisk.img4"
 require_file "$BOOT/kernelcache.img4.patched"
 require_file "$BOOT/chain.info"
 
-USE_SEP="${BUNNY_USE_SEP:-0}"
+USE_SEP="${BUNNY_USE_SEP:--1}"
 USE_LOGO=1
 while (($#)); do
   case "$1" in
@@ -148,14 +148,17 @@ if [[ -f "$BOOT/txm.img4" ]]; then
   send_fw "txm"
 fi
 
+if (( USE_SEP < 0 )); then
+  if [[ -s "$BOOT/sep-firmware.img4" ]]; then USE_SEP=1; else USE_SEP=0; fi
+fi
 if (( USE_SEP )); then
   require_file "$BOOT/sep-firmware.img4"
-  log "Sending RestoreSEP (explicit --sep)"
+  log "Sending RestoreSEP (rsepfirmware)"
   irecovery -f "$BOOT/sep-firmware.img4"
   irecovery -c rsepfirmware
   show_state "AFTER RESTORESEP"
 else
-  echo "==> RestoreSEP skipped (default; use --sep to load it)"
+  echo "==> RestoreSEP disabled (--no-sep)"
 fi
 
 log "Sending DeviceTree"
