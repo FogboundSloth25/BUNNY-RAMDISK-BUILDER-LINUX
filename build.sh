@@ -694,7 +694,7 @@ p = Path(sys.argv[1])
 obj = IMG4(p.read_bytes())
 if not obj.im4p:
     raise SystemExit("boot logo IMG4 has no IM4P")
-if obj.im4p.fourcc != "logo":
+if obj.im4p.fourcc != "rlgo":
     raise SystemExit(f"boot logo IMG4 has wrong fourcc: {obj.im4p.fourcc!r}")
 payload = obj.im4p.payload
 if payload.compression:
@@ -702,7 +702,7 @@ if payload.compression:
 data = payload.output().data
 if not data:
     raise SystemExit("boot logo IMG4 has an empty payload")
-print(f"boot logo verified: logo, payload={len(data)} bytes")
+print(f"boot logo verified: rlgo, payload={len(data)} bytes")
 PY
 
 printf "logo_source=%s\n" "$LOGO_SOURCE" >> "$BOOT/chain.info"
