@@ -167,3 +167,16 @@ command -v iproxy >/dev/null 2>&1 && echo "[OK] iproxy" || echo "[WARN] iproxy u
 echo
 echo "Setup complete."
 echo "Run ./status.sh, then ./build.sh --version <version>"
+
+echo "==> Building Linux IMG4 patching tool"
+IMG4LIB="$ROOT/third_party/img4lib"
+if [[ ! -d "$IMG4LIB/.git" ]]; then
+  rm -rf "$IMG4LIB"
+  git clone --recursive https://github.com/xerub/img4lib.git "$IMG4LIB"
+else
+  git -C "$IMG4LIB" submodule update --init --recursive
+fi
+make -C "$IMG4LIB" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
+cp "$IMG4LIB/img4" "$ROOT/.local/img4"
+chmod +x "$ROOT/.local/img4"
+echo "IMG4 tool ready: $ROOT/.local/img4"
