@@ -119,13 +119,7 @@ Defaults:
 - user: `root`
 - password: `alpine`
 
-For the ICH A12/A13 SSH ramdisk:
-
-```bash
-./ssh.sh
-```
-
-The bundled ramdisk Dropbear service listens on device port `22`.
+For the ICH A12/A13 SSH ramdisk, `./ssh.sh` uses the bundled `restored_external` payload and connects to Dropbear on device port `22`.
 
 ## Linux APFS backend
 
