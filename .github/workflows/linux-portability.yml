@@ -1,0 +1,42 @@
+name: Linux portability
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro: [ubuntu:latest, debian:stable-slim, fedora:latest, archlinux:latest]
+    container:
+      image: ${{ matrix.distro }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bash
+        run: |
+          if command -v apt-get >/dev/null; then
+            apt-get update && apt-get install -y bash
+          elif command -v dnf >/dev/null; then
+            dnf install -y bash
+          elif command -v pacman >/dev/null; then
+            pacman -Sy --noconfirm bash
+          fi
+      - name: Syntax check
+        run: |
+          bash -n env.sh
+          bash -n setup_dependencies.sh
+          bash -n build.sh
+          bash -n boot.sh
+          bash -n ssh.sh
+          bash -n status.sh
+          bash -n scripts/ramdisk_linux.sh
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: .

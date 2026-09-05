@@ -1,0 +1,8 @@
+cache/
+work/
+bootchain/
+.local/
+third_party/
+.venv/
+.last_bootchain
+*.log

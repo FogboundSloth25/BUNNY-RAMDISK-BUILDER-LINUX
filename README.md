@@ -1,91 +1,171 @@
-# BUNNY RAMDISK BUILDER
+# BUNNY RAMDISK BUILDER — Linux
 
-**A12/A13 SSH ramdisk builder for macOS** — native SwiftUI app (universal: Apple Silicon + Intel).
+Native Linux port of **BUNNY RAMDISK BUILDER** for A12/A13 research devices.
 
-Connect your iPhone in **DFU + usbliter8 (RP2350)**, pick an iOS version, and the tool builds a complete SSH ramdisk bootchain for you — automatically.
+The project keeps the original builder workflow but replaces the macOS-only pieces with Linux-native tooling.
 
----
+## What changed from macOS
 
-## ✅ Compatible Macs
+| macOS original | Linux port |
+|---|---|
+| SwiftUI app | Bash/Python CLI |
+| Homebrew | apt/dnf/pacman |
+| hdiutil/diskutil | Linux loop mounts + linux-apfs-rw |
+| Darwin libirecovery build | libirecovery on Linux |
+| bundled Darwin tools | native Linux tools / local `.local` prefix |
+| macOS IPSW helpers | blacktop/ipsw + pyimg4 |
 
-| Requirement | Details |
-|-------------|---------|
-| **Chip** | Apple Silicon (M1/M2/M3/M4) **and** Intel — universal binary (arm64 + x86_64) |
-| **macOS** | 13.0 (Ventura) or newer |
-| **Rosetta** | Apple Silicon Macs need Rosetta for 3 bundled tools (`gtar`, `iproxy`, `sshpass`) — installed automatically by the setup script |
-| **Dependencies** | Homebrew + `ipsw` CLI (blacktop/tap) + `pyimg4` — auto-installed by the app on first launch (or `setup_dependencies.sh`) |
-| **Hardware** | RP2350 (Raspberry Pi Pico 2) + [usbliter8](https://github.com/prdgmshift/usbliter8) firmware + iPhone A12/A13 |
+## Supported distributions
 
-**Supported devices (A12/A13):**
-- iPhone XR, XS, XS Max (A12)
-- iPhone 11, 11 Pro, 11 Pro Max,SE2 or Ipad (A13)
-- (uses usbliter8 — pwned DFU required)
+**Fedora, Debian, Ubuntu and Arch Linux** are supported by `setup_dependencies.sh`.
 
----
+## Install
 
-## 📥 Installation (step by step)
-
-### 1. Download the app
-- Go to **Releases** → `BUNNY-RAMDISK-BUILDER.dmg`
-- Open the DMG, drag **BUNNY RAMDISK BUILDER.app** into **Applications**
-
-### 2. First launch
-- Right-click the app → **Open** (first time only — ad-hoc signed, Gatekeeper warning is expected)
-- The app **automatically**:
-  1. Copies its build engine to `~/Library/Application Support/BUNNY RAMDISK BUILDER/engine`
-  2. Checks dependencies (`ipsw`, `pyimg4`) — if missing, click **Install** and it sets everything up for you
-  3. Detects your connected device
-
-### 3. Manual dependency setup (optional)
-If you prefer to install dependencies yourself:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bunnyciaa/BUNNY-RAMDISK-BUILDER/main/setup_dependencies.sh -o setup_dependencies.sh
-chmod +x setup_dependencies.sh
+git clone https://github.com/FogboundSloth25/BUNNY-RAMDISK-BUILDER-LINUX.git
+cd BUNNY-RAMDISK-BUILDER-LINUX
+chmod +x *.sh scripts/*.sh
 ./setup_dependencies.sh
 ```
 
----
+The installer creates a local Python virtualenv, installs the Python dependencies, builds or installs libirecovery, installs blacktop/ipsw, fetches the A12/A13 patchfinders, builds trustcache, builds the experimental Linux APFS module and downloads default A12/A13 IM4M resources.
 
-## 🚀 How to use
+## Check the device
 
-1. **Enter DFU + pwn:**
-   - Put your iPhone in DFU mode
-   - Connect the **RP2350** with usbliter8 firmware
-   - Connect the iPhone to your Mac (USB-A → Lightning cable recommended)
-2. **Device detected** — the app shows NAME / PRODUCT / MODEL / CPID / PWND status automatically
-3. **Load Firmwares** — signed iOS versions for your device are fetched (e.g. iOS 18.7.10 for A12, 26.6.1 for A13)
-4. **Pick a version** — the tool shows exactly which IPSW files it will download + estimated size
-5. **Build** — fast parallel downloader (ZIP64 range chunks, ~15x faster), then builds the full bootchain:
-   - Patched iBEC (usbliter8)
-   - Patched kernel (AMFI + debugger)
-   - SSH ramdisk (SSH injected, password `alpine`)
-   - with-fw firmwares + RestoreSEP
-6. **DONE popup** — bootchain + auto-created ZIP
+Put the iPhone into DFU / pwned DFU and run:
 
-### Output
-- **Bootchain:** `~/Library/Application Support/BUNNY RAMDISK BUILDER/engine/bootchain/`
-- **ZIP (for the BUNNY RAMDISK app):** `~/BUNNY RAMDISK/ramdisk/`
-- **Log file:** `~/BUNNY RAMDISK/ramdisk_builder_swift.log`
+```bash
+./status.sh
+```
 
----
+The device section comes from `irecovery -q`.
 
-## 🔧 Troubleshooting
+## Build
 
-| Problem | Fix |
-|---------|-----|
-| "device pwn state lost" | Re-enter DFU + re-pwn with usbliter8 (RP2350) |
-| Download stalls | Automatic — the tool retries (up to 3x) with a fresh connection |
-| Build fails with python error | Run `setup_dependencies.sh` (pyimg4 for the correct python3) |
-| Screen stays blank after boot | Cosmetic — display init quirk; SSH still works |
-| Gatekeeper "unidentified developer" | Right-click → **Open** |
+For firmware selected by version:
 
----
+```bash
+./build.sh --version 18.7.10
+```
 
-## ⚠️ Important
+For a build number:
 
-- **Research/educational use on devices you own only.**
-- The build engine (iBoot/kernel patchfinders) is based on the open-source toolkit — MIT licensed, credit to @Official_I_C_H.
+```bash
+./build.sh --build 22H374
+```
 
----
+For a local IPSW:
 
-**Made by @bunnyciaa**
+```bash
+./build.sh --ipsw ~/Downloads/iPhone11,2.ipsw --model D321AP
+```
+
+For a direct IPSW URL:
+
+```bash
+./build.sh --url 'https://example.invalid/file.ipsw' \
+  --product iPhone12,1 --model D421AP
+```
+
+The remote mode retrieves the BuildManifest and requested IPSW members independently and caches them under `cache/` rather than requiring the whole IPSW first.
+
+Use `--dry-run` to validate the BuildManifest and selected BuildIdentity before patching.
+
+## Output
+
+Bootchains are stored in:
+
+```
+bootchain/<board>-<version>-<build>-ramdisk/
+```
+
+Typical output:
+
+```
+iBEC.patched.img4
+iBEC.patched.raw
+iBSS.patched.raw          # when --use-ibss
+kernelcache.patched.raw
+kernelcache.img4.patched
+devicetree.img4
+trustcache.img4
+ramdisk.img4
+AOP.img4 / ANE.img4 / ... # when present
+chain.info
+```
+
+## Boot
+
+```bash
+./boot.sh
+```
+
+When `usbliter8ctl` is available and a patched iBSS was built, `boot.sh` uses the pwned-DFU path first. Otherwise it falls back to libirecovery/iBEC staging.
+
+The exact boot-chain behavior is device/iOS dependent; a successful build does not mean every IPSW will boot on every A12/A13 board.
+
+## SSH
+
+After the ramdisk starts:
+
+```bash
+./ssh.sh
+```
+
+Defaults:
+
+- local TCP port: `2222`
+- device SSH port: `22`
+- user: `root`
+- password: `alpine`
+
+For a ramdisk using port 44:
+
+```bash
+BUNNY_SSH_DEVICE_PORT=44 ./ssh.sh
+```
+
+## Linux APFS backend
+
+Modern iOS restore ramdisks commonly use APFS. macOS provides mature native APFS image tooling; Linux does not.
+
+This fork therefore uses:
+
+- `linux-apfs/linux-apfs-rw` — experimental APFS kernel driver
+- `linux-apfs/apfsprogs` — `mkapfs`
+- Linux loop devices and ordinary tar/xattr handling
+
+The builder **does not edit the stock ramdisk in place**. It creates a larger APFS image, copies the stock filesystem, injects the SSH payload, then packages the new image.
+
+APFS write support is experimental and must be considered a device-testing stage, not a guarantee of a bootable image.
+
+## Important limitations
+
+- A12/A13 only; patchfinder coverage is tied to upstream usbliter8 research.
+- SEP is not bypassed by this project.
+- This is a tethered research workflow.
+- IM4M resources are firmware/chip specific; replace the downloaded resources with your own valid ticket when required.
+- Linux filesystem metadata handling cannot perfectly reproduce every Apple-specific filesystem feature.
+
+## Options
+
+```
+--kernel patched|stock
+--use-ibss
+--no-ssh
+--no-fw
+--dry-run
+```
+
+## Credits
+
+- **bunnyciaa/BUNNY-RAMDISK-BUILDER** — original builder
+- **Leeksov/usbliter8ra1n** — A12/A13 patchfinders
+- **blacktop/ipsw** — IPSW/IMG4 tooling
+- **libimobiledevice/libirecovery** — Linux USB recovery transport
+- **CRKatri/trustcache** — trustcache tooling
+- **linux-apfs/linux-apfs-rw** — experimental APFS Linux filesystem driver
+- **linux-apfs/apfsprogs** — APFS userspace tooling
+- **strawhatdev01/Strawhat-Ramdisk** — Linux-independent APFS/ramdisk workflow reference
+
+Use only on devices you own or are authorized to research.

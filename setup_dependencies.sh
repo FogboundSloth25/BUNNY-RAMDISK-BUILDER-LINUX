@@ -1,64 +1,140 @@
-#!/bin/bash
-# BUNNY RAMDISK BUILDER — dependency setup for any Mac.
-# Installs: Rosetta (Apple Silicon), Homebrew (if missing), ipsw CLI, pyimg4.
-set -uo pipefail
+#!/usr/bin/env bash
+set -euo pipefail
 
-log() { echo "==> $*"; }
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+source "$ROOT/env.sh"
 
-log "Checking dependencies..."
+[[ "$(uname -s)" == "Linux" ]] || die "This fork targets Linux."
 
-# 1) Rosetta (Apple Silicon only — needed for bundled x86_64 tools)
-if [ "$(uname -m)" = "arm64" ]; then
-    if /usr/bin/pgrep -q oahd 2>/dev/null || /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null; then
-        log "Rosetta already installed"
-    else
-        log "Installing Rosetta (required for bundled tools)..."
-        softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 \
-            || log "warning: Rosetta install failed (manual: softwareupdate --install-rosetta)"
-    fi
+. /etc/os-release
+ID_LC="${ID,,}"
+case "$ID_LC" in
+  linuxmint|pop|elementary|neon) ID_LC=ubuntu ;;
+  raspbian) ID_LC=debian ;;
+esac
+
+echo "Detected: $ID_LC"
+
+case "$ID_LC" in
+  debian|ubuntu)
+    sudo apt-get update
+    sudo apt-get install -y bash ca-certificates curl git jq unzip xz-utils zip \
+      python3 python3-venv python3-pip python3-dev \
+      build-essential pkg-config autoconf automake libtool \
+      libusb-1.0-0-dev libplist-dev libreadline-dev uuid-dev \
+      libssl-dev fuse3 rsync tar sshpass
+    ;;
+  fedora)
+    sudo dnf install -y bash ca-certificates curl git jq unzip xz zip \
+      python3 python3-pip python3-devel gcc gcc-c++ make pkgconf \
+      autoconf automake libtool libusb1-devel libplist-devel \
+      readline-devel libuuid-devel openssl-devel fuse3 rsync tar sshpass
+    ;;
+  arch)
+    sudo pacman -Sy --needed --noconfirm bash ca-certificates curl git jq unzip xz zip \
+      python python-pip base-devel pkgconf autoconf automake libtool \
+      libusb libplist readline libuuid openssl fuse3 rsync tar sshpass
+    ;;
+  *)
+    die "Unsupported Linux distribution: $ID_LC (supported: Fedora, Debian, Ubuntu, Arch)"
+    ;;
+esac
+
+mkdir -p "$BUNNY_TOOLS" "$BUNNY_PATCH" "$BUNNY_THIRD_PARTY" "$BUNNY_RESOURCES"
+
+log "Creating Python virtual environment"
+python3 -m venv "$ROOT/.venv"
+"$ROOT/.venv/bin/python" -m pip install --upgrade pip wheel
+"$ROOT/.venv/bin/python" -m pip install -r "$ROOT/requirements.txt"
+
+if ! command -v ipsw >/dev/null 2>&1; then
+  command -v go >/dev/null 2>&1 || die "Go 1.21+ is required for blacktop/ipsw"
+  GOTOOLCHAIN=auto go install github.com/blacktop/ipsw@master
+  [[ -x "$HOME/go/bin/ipsw" ]] || die "ipsw build succeeded but executable was not found"
+  ln -sf "$HOME/go/bin/ipsw" "$BUNNY_TOOLS/ipsw"
 fi
 
-# 2) Homebrew
-if ! command -v brew >/dev/null 2>&1; then
-    log "Installing Homebrew..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null \
-        || { echo "error: Homebrew install failed" >&2; exit 1; }
-    if [ "$(uname -m)" = "arm64" ]; then
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-    else
-        eval "$(/usr/local/bin/brew shellenv)"
-    fi
-else
-    log "Homebrew present"
+if ! command -v irecovery >/dev/null 2>&1; then
+  if [[ "$ID_LC" == debian || "$ID_LC" == ubuntu ]]; then
+    sudo apt-get install -y libirecovery-utils libirecovery-dev libimobiledevice-glue-dev 2>/dev/null || true
+  elif [[ "$ID_LC" == fedora ]]; then
+    sudo dnf install -y libirecovery libirecovery-devel libimobiledevice-glue-devel 2>/dev/null || true
+  fi
 fi
 
-# 3) ipsw CLI (blacktop)
-if command -v ipsw >/dev/null 2>&1; then
-    log "ipsw present ($(ipsw version 2>/dev/null | head -1))"
-else
-    log "Installing ipsw (blacktop/tap)..."
-    brew install blacktop/tap/ipsw 2>&1 | tail -3 || { echo "error: ipsw install failed" >&2; exit 1; }
+if ! command -v irecovery >/dev/null 2>&1; then
+  SRC="$BUNNY_THIRD_PARTY/libirecovery"
+  rm -rf "$SRC"
+  git clone --depth 1 https://github.com/libimobiledevice/libirecovery.git "$SRC"
+  (
+    cd "$SRC"
+    ./autogen.sh --prefix="$ROOT/.local"
+    make -j"$(nproc)"
+    make install
+  )
 fi
 
-# 4) pyimg4 for homebrew python3
-PYBIN=""
-for c in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
-    [ -x "$c" ] && PYBIN="$c" && break
+if ! command -v iproxy >/dev/null 2>&1; then
+  case "$ID_LC" in
+    debian|ubuntu) sudo apt-get install -y libusbmuxd-tools 2>/dev/null || true ;;
+    fedora) sudo dnf install -y libusbmuxd-utils 2>/dev/null || true ;;
+    arch) sudo pacman -S --needed --noconfirm libusbmuxd 2>/dev/null || true ;;
+  esac
+fi
+
+log "Fetching A12/A13 patchfinders"
+curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/iboot_patchfinder.py -o "$BUNNY_PATCH/iboot_patchfinder.py"
+curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/kernel_patchfinder.py -o "$BUNNY_PATCH/kernel_patchfinder.py"
+curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/sptm_patchfinder.py -o "$BUNNY_PATCH/sptm_patchfinder.py"
+curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/txm_patchfinder.py -o "$BUNNY_PATCH/txm_patchfinder.py"
+chmod 755 "$BUNNY_PATCH"/*.py
+
+if [[ ! -x "$BUNNY_TOOLS/trustcache" ]]; then
+  SRC="$BUNNY_THIRD_PARTY/trustcache"
+  rm -rf "$SRC"
+  git clone --depth 1 https://github.com/CRKatri/trustcache.git "$SRC"
+  (
+    cd "$SRC"
+    make -j"$(nproc)"
+    install -m 0755 trustcache "$BUNNY_TOOLS/trustcache"
+  )
+fi
+
+log "Building experimental Linux APFS driver"
+APFS_SRC="$BUNNY_THIRD_PARTY/linux-apfs-rw"
+[[ -d "$APFS_SRC" ]] || git clone --depth 1 https://github.com/linux-apfs/linux-apfs-rw.git "$APFS_SRC"
+if [[ ! -f "$APFS_SRC/apfs.ko" ]]; then
+  make -C "$APFS_SRC"
+fi
+
+log "Building mkapfs"
+APFSPROGS="$BUNNY_THIRD_PARTY/apfsprogs"
+[[ -d "$APFSPROGS" ]] || git clone --depth 1 https://github.com/linux-apfs/apfsprogs.git "$APFSPROGS"
+if [[ ! -x "$BUNNY_TOOLS/mkapfs" ]]; then
+  make -C "$APFSPROGS/mkapfs" -j"$(nproc)"
+  install -m 0755 "$APFSPROGS/mkapfs/mkapfs" "$BUNNY_TOOLS/mkapfs"
+fi
+
+log "Fetching default A12/A13 IM4M resources"
+curl -fsSL https://raw.githubusercontent.com/strawhatdev01/Strawhat-Ramdisk/main/resources/IM4M_0x8020 -o "$BUNNY_RESOURCES/IM4M_0x8020"
+curl -fsSL https://raw.githubusercontent.com/strawhatdev01/Strawhat-Ramdisk/main/resources/IM4M_0x8030 -o "$BUNNY_RESOURCES/IM4M_0x8030"
+
+if [[ -d "$BUNNY_THIRD_PARTY/libirecovery/udev" ]]; then
+  for rule in "$BUNNY_THIRD_PARTY/libirecovery"/udev/*.rules; do
+    [[ -f "$rule" ]] || continue
+    sudo install -m 0644 "$rule" "/etc/udev/rules.d/$(basename "$rule")"
+  done
+  sudo udevadm control --reload-rules
+  sudo udevadm trigger
+fi
+
+for tool in python3 ipsw irecovery; do
+  command -v "$tool" >/dev/null 2>&1 && echo "[OK] $tool" || echo "[MISS] $tool"
 done
-if [ -z "$PYBIN" ]; then
-    echo "error: python3 not found" >&2
-    exit 1
-fi
-if "$PYBIN" -c "import pyimg4" 2>/dev/null; then
-    log "pyimg4 present ($PYBIN)"
-else
-    log "Installing pyimg4 for $PYBIN ..."
-    "$PYBIN" -m pip install --user pyimg4 2>&1 | tail -2 || {
-        "$PYBIN" -m pip install pyimg4 2>&1 | tail -2 || { echo "error: pyimg4 install failed" >&2; exit 1; }
-    }
-fi
+[[ -x "$BUNNY_TOOLS/trustcache" ]] && echo "[OK] trustcache"
+[[ -x "$BUNNY_TOOLS/mkapfs" ]] && echo "[OK] mkapfs"
+[[ -f "$APFS_SRC/apfs.ko" ]] && echo "[OK] apfs.ko"
 
-log "Verification:"
-command -v ipsw && echo "  ipsw OK"
-"$PYBIN" -c "import pyimg4; print('  pyimg4 OK ('+pyimg4.__version__+')')"
-log "ALL DEPENDENCIES READY ✔"
+echo
+echo "Setup complete."
+echo "Run ./status.sh, then ./build.sh --version <version>"
