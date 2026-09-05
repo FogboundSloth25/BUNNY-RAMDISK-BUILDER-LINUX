@@ -17,6 +17,7 @@ options:
   --kernel stock|patched       default: patched
   --use-ibss                   patch/stage iBSS
   --no-ssh                     keep stock RestoreRamDisk
+  --with-fw                    stage coprocessor firmware (default)
   --no-fw                      do not stage coprocessor firmware
   --no-sep                     do not stage RestoreSEP
   --dry-run                    validate manifest only
@@ -46,6 +47,7 @@ case "$1" in
   --im4m) (($# >= 2)) || die "--im4m needs a value"; IM4M="$2"; shift 2 ;;
   --kernel) (($# >= 2)) || die "--kernel needs a value"; KERNEL_MODE="$2"; shift 2 ;;
   --use-ibss) USE_IBSS=1; shift ;;
+  --with-fw) WITH_FW=1; shift ;;
   --no-ssh) INJECT_SSH=0; shift ;;
   --no-fw) WITH_FW=0; shift ;;
   --no-sep) WITH_SEP=0; shift ;;
