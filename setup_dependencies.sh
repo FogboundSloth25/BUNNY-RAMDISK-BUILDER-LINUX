@@ -49,7 +49,6 @@ python3 -m venv "$ROOT/.venv"
 "$ROOT/.venv/bin/python" -m pip install -r "$ROOT/requirements.txt"
 
 if ! command -v ipsw >/dev/null 2>&1; then
-  command -v go >/dev/null 2>&1 || die "Go was not installed correctly"
   GOTOOLCHAIN=auto go install github.com/blacktop/ipsw@master
   [[ -x "$HOME/go/bin/ipsw" ]] || die "ipsw build succeeded but executable was not found"
   ln -sf "$HOME/go/bin/ipsw" "$BUNNY_TOOLS/ipsw"
@@ -106,15 +105,24 @@ log "Building experimental Linux APFS driver"
 APFS_SRC="$BUNNY_THIRD_PARTY/linux-apfs-rw"
 [[ -d "$APFS_SRC" ]] || git clone --depth 1 https://github.com/linux-apfs/linux-apfs-rw.git "$APFS_SRC"
 
-# Upstream Makefile passes M=$(PWD) unquoted to the kernel build. That breaks
-# when the project path contains spaces (for example ~/iPhone XS/...).
-if grep -q '^\s*make -C \$(KERNEL_DIR) M=\$(PWD)' "$APFS_SRC/Makefile"; then
-  sed -i 's#make -C \$(KERNEL_DIR) M=\$(PWD)#make -C "$(KERNEL_DIR)" M="$(PWD)"#' "$APFS_SRC/Makefile"
-fi
+KDIR="/lib/modules/$(uname -r)/build"
+[[ -d "$KDIR" ]] || die "Kernel build directory missing: $KDIR"
 
-if [[ ! -f "$APFS_SRC/apfs.ko" ]]; then
-  make -C "$APFS_SRC"
-fi
+# Kbuild rejects spaces in KBUILD_EXTMOD. Build the upstream module in a
+# no-space staging path, then copy the resulting module back to the checkout.
+APFS_BUILD="$BUNNY_WORK/linux-apfs-rw-build"
+rm -rf "$APFS_BUILD"
+mkdir -p "$APFS_BUILD"
+rsync -a --exclude='.git' "$APFS_SRC/" "$APFS_BUILD/"
+
+(
+  cd "$APFS_BUILD"
+  printf '#define GIT_COMMIT\t"linux-port"\n' > version.h
+  make -C "$KDIR" M="$APFS_BUILD"
+)
+
+[[ -f "$APFS_BUILD/apfs.ko" ]] || die "linux-apfs-rw build finished without apfs.ko"
+cp "$APFS_BUILD/apfs.ko" "$APFS_SRC/apfs.ko"
 
 log "Building mkapfs"
 APFSPROGS="$BUNNY_THIRD_PARTY/apfsprogs"
