@@ -20,7 +20,7 @@ case "$ID_LC" in
     sudo apt-get update
     sudo apt-get install -y bash ca-certificates curl git jq unzip xz-utils zip golang \
       python3 python3-venv python3-pip python3-dev \
-      build-essential pkg-config autoconf automake libtool gettext \
+      build-essential pkg-config autoconf automake libtool gettext cmake \
       libusb-1.0-0-dev libplist-dev libreadline-dev uuid-dev \
       libssl-dev fuse3 rsync tar sshpass
     ;;
@@ -33,7 +33,7 @@ case "$ID_LC" in
     ;;
   arch)
     sudo pacman -Sy --needed --noconfirm bash ca-certificates curl git jq unzip xz zip go gettext \
-      python python-pip base-devel pkgconf autoconf automake libtool \
+      python python-pip base-devel pkgconf cmake autoconf automake libtool \
       libusb libplist readline libuuid openssl fuse3 rsync tar sshpass
     ;;
   *)
@@ -41,7 +41,7 @@ case "$ID_LC" in
     ;;
 esac
 
-mkdir -p "$BUNNY_TOOLS" "$BUNNY_PATCH" "$BUNNY_THIRD_PARTY" "$BUNNY_RESOURCES"
+mkdir -p "$BUNNY_TOOLS" "$BUNNY_PATCH" "$BUNNY_THIRD_PARTY" "$BUNNY_RESOURCES" "$ROOT/.local"
 
 log "Creating Python virtual environment"
 python3 -m venv "$ROOT/.venv"
@@ -163,6 +163,8 @@ command -v iproxy >/dev/null 2>&1 && echo "[OK] iproxy" || echo "[WARN] iproxy u
 [[ -x "$BUNNY_TOOLS/trustcache" ]] && echo "[OK] trustcache"
 [[ -x "$BUNNY_TOOLS/mkapfs" ]] && echo "[OK] mkapfs"
 [[ -f "$APFS_SRC/apfs.ko" ]] && echo "[OK] apfs.ko"
+[[ -x "$ROOT/.local/img4" ]] && echo "[OK] img4"
+[[ -x "$ROOT/scripts/kerneldiff.py" ]] && echo "[OK] kerneldiff.py"
 
 echo
 echo "Setup complete."
