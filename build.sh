@@ -429,9 +429,21 @@ if (( INJECT_SSH )); then
   mkdir -p "$BUNNY_RESOURCES"
   SSH_TAR="$BUNNY_RESOURCES/ssh.tar.gz"
   if [[ ! -s "$SSH_TAR" ]]; then
-    curl -fsSL https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/ssh.tar.gz -o "$SSH_TAR"
+    curl --fail --show-error --location --retry 8 --retry-all-errors \
+      --connect-timeout 20 --speed-time 60 --speed-limit 1024 \
+      -o "$SSH_TAR" \
+      https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/ssh.tar.gz
   fi
   [[ -s "$SSH_TAR" ]] || die "SSH payload is empty"
+
+  SSH_LIST="$BUNNY_RESOURCES/sshtarlist.txt"
+  if [[ ! -s "$SSH_LIST" ]]; then
+    curl --fail --show-error --location --retry 8 --retry-all-errors \
+      --connect-timeout 20 --speed-time 60 --speed-limit 1024 \
+      -o "$SSH_LIST" \
+      https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/sshtarlist.txt
+  fi
+  [[ -s "$SSH_LIST" ]] || die "SSH payload allowlist is empty"
 
   log "Injecting SSH into RestoreRamDisk.dmg"
   inject_ssh_ramdisk "$WORK/RestoreRamDisk.dmg" "$SSH_TAR" "$WORK/ramdisk-injected.dmg"
