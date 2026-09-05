@@ -125,7 +125,7 @@ APFSPROGS="$BUNNY_THIRD_PARTY/apfsprogs"
 APFS_PROGS_STAGE="$(mktemp -d /tmp/bunny-apfsprogs.XXXXXX)"
 cleanup_apfsprogs() { rm -rf "$APFS_PROGS_STAGE"; }
 trap cleanup_apfsprogs EXIT INT TERM
-rsync -a --exclude='.git' "$APFSPROGS/" "$APFS_PROGS_STAGE/"
+rsync -a "$APFSPROGS/" "$APFS_PROGS_STAGE/"
 APFS_COMMIT="$(git -C "$APFSPROGS" rev-parse HEAD)"
 
 (
