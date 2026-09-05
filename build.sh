@@ -154,7 +154,6 @@ BUILD="$(jq -r '.build // empty' <<<"$IDENTITY")"
 [[ -n "$VERSION" && "$VERSION" != unknown ]] || VERSION="$BUILD"
 CACHE="$BUNNY_CACHE/$CACHE_KEY"
 mkdir -p "$CACHE"
-cp "$MANIFEST" "$CACHE/BuildManifest.plist"
 
 path_for() { jq -r --arg key "$1" '.[$key] // empty' <<<"$IDENTITY"; }
 
