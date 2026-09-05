@@ -39,9 +39,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ludeeus/action-shellcheck@2.0.0
-        with:
-          scandir: .
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+      - name: ShellCheck
+        run: |
+          shellcheck --version
+          shellcheck -S error -x \
+            env.sh setup_dependencies.sh build.sh boot.sh ssh.sh status.sh \
+            scripts/ramdisk_linux.sh scripts/build_apfs_module.sh
 
   apfs:
     runs-on: ubuntu-latest
