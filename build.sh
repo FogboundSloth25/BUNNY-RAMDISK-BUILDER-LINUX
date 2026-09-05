@@ -674,14 +674,38 @@ fi
   echo "linux_apfs_backend=linux-apfs-rw"
 } > "$BOOT/chain.info"
 
-# Optional project boot logo: logo.jpg in the repository root becomes a
-# signed, panel-sized logo.img4 embedded in the bootchain.
-if [[ -f "$ROOT/logo.jpg" ]]; then
-  log "Building boot logo from logo.jpg"
-  "$ROOT/scripts/make_logo.sh" "$ROOT/logo.jpg" --out "$BOOT/logo.img4"
-  [[ -s "$BOOT/logo.img4" ]] || die "boot logo generation produced no IMG4"
+# Project boot logo. The source is configurable so logo.jpg can remain untracked.
+LOGO_SOURCE="${BUNNY_LOGO_PATH:-$ROOT/logo.jpg}"
+if [[ ! -f "$LOGO_SOURCE" ]]; then
+  die "boot logo source not found: $LOGO_SOURCE (put logo.jpg in the project root or set BUNNY_LOGO_PATH)"
 fi
+[[ -s "$LOGO_SOURCE" ]] || die "boot logo source is empty: $LOGO_SOURCE"
 
+log "Building boot logo from $(basename "$LOGO_SOURCE")"
+"$ROOT/scripts/make_logo.sh" "$LOGO_SOURCE" --out "$BOOT/logo.img4"
+[[ -s "$BOOT/logo.img4" ]] || die "boot logo generation produced no IMG4"
+
+"$PY" - "$BOOT/logo.img4" <<'PY'
+import sys
+from pathlib import Path
+from pyimg4 import IMG4
+
+p = Path(sys.argv[1])
+obj = IMG4(p.read_bytes())
+if not obj.im4p:
+    raise SystemExit("boot logo IMG4 has no IM4P")
+if obj.im4p.fourcc != "logo":
+    raise SystemExit(f"boot logo IMG4 has wrong fourcc: {obj.im4p.fourcc!r}")
+payload = obj.im4p.payload
+if payload.compression:
+    payload.decompress()
+data = payload.output().data
+if not data:
+    raise SystemExit("boot logo IMG4 has an empty payload")
+print(f"boot logo verified: logo, payload={len(data)} bytes")
+PY
+
+printf "logo_source=%s\n" "$LOGO_SOURCE" >> "$BOOT/chain.info"
 printf '%s\n' "$(basename "$BOOT")" > "$BUNNY_LAST"
 rm -rf "$WORK"
 echo
