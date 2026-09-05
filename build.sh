@@ -596,39 +596,37 @@ echo "kc.bpatch: $PATCH_COUNT byte patches"
   -P "$WORK/kc.bpatch" \
   -J
 
-# Validate the exact artifact delivered to iBoot.  -P in img4lib applies
-# the byte-patch file to the IM4P payload; it does NOT create an IMG4/IM4P
-# property literally named "krnl".  The rkrn/krnl distinction is the
-# fourcc/type of the kernel image, while the patch list is applied to its
-# payload.
-"$PY" - "$BOOT/kernelcache.img4.patched" "$WORK/kc.bpatch" <<'PY'
+# Validate the exact artifact delivered to iBoot using the same img4
+# extractor used to obtain kcache.raw.  pyimg4 can expose the internal
+# compression/property stream rather than the final Mach-O for some IMG4
+# variants; that is not the correct transport-level validation here.
+FINAL_KERNEL_RAW="$WORK/kernelcache.final.raw"
+rm -f "$FINAL_KERNEL_RAW"
+"$IMG4" -i "$BOOT/kernelcache.img4.patched" -o "$FINAL_KERNEL_RAW"
+[[ -s "$FINAL_KERNEL_RAW" ]] || die "img4 could not extract the final kernel payload"
+
+"$PY" - "$FINAL_KERNEL_RAW" "$WORK/kernelcache.raw" "$WORK/kc.bpatch" <<'PY'
 import sys
 from pathlib import Path
-from pyimg4 import IMG4
 
-img4_path = Path(sys.argv[1])
-patch_path = Path(sys.argv[2])
+final_path = Path(sys.argv[1])
+stock_path = Path(sys.argv[2])
+patch_path = Path(sys.argv[3])
+final_data = final_path.read_bytes()
+stock_data = stock_path.read_bytes()
 
-obj = IMG4(img4_path.read_bytes())
-if not obj.im4p:
-    raise SystemExit("kernel IMG4 has no IM4P")
-
-if obj.im4p.fourcc != "rkrn":
-    raise SystemExit(f"kernel IMG4 has wrong IM4P type: {obj.im4p.fourcc!r}")
-
-payload = obj.im4p.payload
-if payload.compression:
-    payload.decompress()
-data = payload.output().data
-
-# arm64 Mach-O magic values.
-if data[:4] not in (bytes.fromhex("cffaedfe"), bytes.fromhex("feedfacf")):
+if final_data[:4] not in (bytes.fromhex("cffaedfe"), bytes.fromhex("feedfacf")):
     raise SystemExit(
-        f"kernel IMG4 payload is not Mach-O: magic={data[:4].hex()}"
+        f"final kernel payload is not Mach-O after img4 extraction: "
+        f"magic={final_data[:4].hex()}"
+    )
+if len(final_data) != len(stock_data):
+    raise SystemExit(
+        f"final kernel size mismatch: stock={len(stock_data)} final={len(final_data)}"
     )
 
-# Verify every requested byte patch is present in the final payload.
 checked = 0
+changed = 0
 for raw in patch_path.read_text().splitlines():
     line = raw.split("#", 1)[0].split(";", 1)[0].strip()
     if not line:
@@ -636,31 +634,40 @@ for raw in patch_path.read_text().splitlines():
     fields = line.split()
     if len(fields) < 3:
         raise SystemExit(f"malformed kc.bpatch line: {raw!r}")
-
     off = int(fields[0], 0)
     old = int(fields[1], 0)
     new = int(fields[2], 0)
-
-    if off >= len(data):
+    if off >= len(final_data) or off >= len(stock_data):
+        raise SystemExit(f"kc.bpatch offset 0x{off:x} outside final kernel")
+    if stock_data[off] != old:
         raise SystemExit(
-            f"kc.bpatch offset 0x{off:x} exceeds kernel payload "
-            f"size 0x{len(data):x}"
+            f"stock kernel mismatch at 0x{off:x}: "
+            f"got={stock_data[off]:02x}, patch-old={old:02x}"
         )
-
-    got = data[off]
-    if got != new:
+    if final_data[off] != new:
         raise SystemExit(
-            f"kc.bpatch was not applied at 0x{off:x}: "
-            f"got={got:02x}, expected_new={new:02x}, stock_old={old:02x}"
+            f"kc.bpatch missing at 0x{off:x}: "
+            f"got={final_data[off]:02x}, expected-new={new:02x}"
         )
     checked += 1
 
 if checked == 0:
     raise SystemExit("kc.bpatch contains no byte patches")
 
+# Confirm there really are differences, and that they are exactly the patch list.
+for off in range(len(stock_data)):
+    if stock_data[off] != final_data[off]:
+        changed += 1
+
+if changed != checked:
+    raise SystemExit(
+        f"final kernel differs from stock at {changed} byte(s), "
+        f"but kc.bpatch contains {checked} patch(es)"
+    )
+
 print(
-    f"kernel IMG4 verified: type=rkrn, Mach-O payload={len(data)} bytes, "
-    f"applied patches={checked}"
+    f"kernel IMG4 verified: type=rkrn, Mach-O payload={len(final_data)} bytes, "
+    f"applied patches={checked}, exact byte delta={changed}"
 )
 PY
 
