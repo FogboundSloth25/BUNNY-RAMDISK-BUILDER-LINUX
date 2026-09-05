@@ -583,19 +583,12 @@ PATCH_COUNT="$(grep -Ec '^0x[0-9a-fA-F]+ 0x[0-9a-fA-F]+ 0x[0-9a-fA-F]+' "$WORK/k
 echo "kc.bpatch: $PATCH_COUNT byte patches"
 
 "$IMG4" -i "$WORK/iBEC.patched.raw" -o "$BOOT/iBEC.patched.img4" -M "$IM4M" -A -T ibec
-# The proven A12/A13 boot flow does NOT put the physically patched kernel
-# into the rkrn payload. It keeps the stock raw KernelCache and attaches the
-# byte patch list as the "krnl" IMG4 property. iBoot applies that property
-# during the kernel handoff. This is also what the reference SSHRD workflow
-# does with: img4 ... -T rkrn -P kc.bpatch -J.
-#
-# Keeping the payload stock is important: embedding the already-patched kernel
-# AND attaching kc.bpatch would apply every modification twice.
-# img4 consumes the decompressed stock Mach-O here. Passing the compressed
-# IM4P container itself would embed the compression/wrapper bytes as payload
-# and the resulting rkrn artifact would not contain a Mach-O kernel.
-# Upstream Linux SSHRD follows the same model: original kernelcache IM4P
-# + kc.bpatch property + -J, rather than passing the raw Mach-O to img4.
+# The reference A12/A13 flow uses img4 -P on the decompressed KernelCache
+# IM4P and emits an rkrn IMG4.  -P applies the kc.bpatch byte changes to the
+# payload during reassembly; it is not a property named "krnl".
+# Therefore the final kernel artifact is a patched rkrn payload, not a stock
+# kernel plus a second patch property.
+
 "$IMG4" -i "$WORK/kernelcache.dec" \
   -o "$BOOT/kernelcache.img4.patched" \
   -M "$IM4M" \
