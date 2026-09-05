@@ -52,7 +52,7 @@ if white < 100: raise SystemExit("logo contains fewer than 100 visible white pix
 PY
 "$IBOOTIM" "$FULL" "$RAW"
 mkdir -p "$(dirname "$OUT")"
-"$IMG4" -i "$RAW" -o "$OUT" -A -A -T rlgo -M "$IM4M"
+"$IMG4" -i "$RAW" -o "$OUT" -A -T rlgo -M "$IM4M"
 [ -s "$OUT" ] || die "logo IMG4 was not produced"
 "$PY" - "$OUT" <<'PY'
 import sys
