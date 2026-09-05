@@ -672,52 +672,67 @@ print(
 PY
 
 "$IMG4" -i "$WORK/DeviceTree.im4p" -o "$BOOT/devicetree.img4" -M "$IM4M" -T rdtr
-"$IMG4" -i "$WORK/RestoreTrustCache.im4p" -o "$BOOT/trustcache.img4" -M "$IM4M" -T rtsc
 
-if (( WITH_SEP )); then
-  [[ -s "$WORK/RestoreSEP.im4p" ]] || die "RestoreSEP extraction missing: $WORK/RestoreSEP.im4p"
-  "$IMG4" -i "$WORK/RestoreSEP.im4p" -o "$BOOT/sep-firmware.img4" -M "$IM4M" -T rsep
-  [[ -s "$BOOT/sep-firmware.img4" ]] || die "RestoreSEP packaging failed"
-  echo "RestoreSEP packaged: $BOOT/sep-firmware.img4"
-fi
-
-if [[ -f "$WORK/SPTM.im4p" ]]; then
-  "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/SPTM.im4p" --output "$BOOT/sptm.img4" --im4m "$IM4M"
-fi
-if [[ -f "$WORK/TXM.im4p" ]]; then
-  "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/TXM.im4p" --output "$BOOT/txm.img4" --im4m "$IM4M"
-fi
+# Always unpack the stock RestoreTrustCache first. When SSH is injected, the
+# additional signed Mach-O payloads must be appended to this exact cache
+# before it is wrapped back into rtsc.
+"$IMG4" -i "$WORK/RestoreTrustCache.im4p" -o "$WORK/trustcache.bin"
+[[ -s "$WORK/trustcache.bin" ]] || die "failed to extract RestoreTrustCache"
 
 if (( INJECT_SSH )); then
   mkdir -p "$BUNNY_RESOURCES"
+
   SSH_TAR="$BUNNY_RESOURCES/ssh.tar.gz"
   if [[ ! -s "$SSH_TAR" ]]; then
-    curl --fail --show-error --location --retry 8 --retry-all-errors \
-      --connect-timeout 20 --speed-time 60 --speed-limit 1024 \
-      -o "$SSH_TAR" \
-      https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/ssh.tar.gz
+    curl --fail --show-error --location --retry 8 --retry-all-errors       --connect-timeout 20 --speed-time 60 --speed-limit 1024       -o "$SSH_TAR"       https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/ssh.tar.gz
   fi
   [[ -s "$SSH_TAR" ]] || die "SSH payload is empty"
 
   SSH_LIST="$BUNNY_RESOURCES/sshtarlist.txt"
   if [[ ! -s "$SSH_LIST" ]]; then
-    curl --fail --show-error --location --retry 8 --retry-all-errors \
-      --connect-timeout 20 --speed-time 60 --speed-limit 1024 \
-      -o "$SSH_LIST" \
-      https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/sshtarlist.txt
+    curl --fail --show-error --location --retry 8 --retry-all-errors       --connect-timeout 20 --speed-time 60 --speed-limit 1024       -o "$SSH_LIST"       https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/sshtarlist.txt
   fi
   [[ -s "$SSH_LIST" ]] || die "SSH payload allowlist is empty"
+
+  BUNNY_RESTORED_EXTERNAL="$BUNNY_RESOURCES/restored_external"
+  if [[ ! -s "$BUNNY_RESTORED_EXTERNAL" ]]; then
+    curl --fail --show-error --location --retry 8 --retry-all-errors       --connect-timeout 20 --speed-time 60 --speed-limit 1024       -o "$BUNNY_RESTORED_EXTERNAL"       https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/restored_external
+  fi
+  [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "restored_external download is empty"
+
+  SSH_STAGE="$WORK/ssh-stage"
+  prepare_ssh_tree "$SSH_TAR" "$SSH_STAGE"
+  verify_ssh_allowlist "$SSH_STAGE" "$SSH_LIST"
+
+  SSH_FILES=()
+  SSH_FILE_COUNT=0
+  while IFS= read -r entry || [[ -n "$entry" ]]; do
+    entry="$(printf '%s\n' "$entry" | sed -E 's/[[:space:]]*#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//')"
+    [[ -n "$entry" ]] || continue
+    rel="$(printf '%s\n' "$entry" | sed 's#^work/sshtar/##')"
+    SSH_FILES+=("$SSH_STAGE/$rel")
+    SSH_FILE_COUNT=$((SSH_FILE_COUNT + 1))
+  done < "$SSH_LIST"
+
+  (( SSH_FILE_COUNT > 0 )) || die "SSH trustcache allowlist contains no files"
+  [[ -x "$BUNNY_TOOLS/trustcache" ]] || die "missing trustcache tool; run ./setup_dependencies.sh"
+
+  log "Appending SSH Mach-O hashes to RestoreTrustCache"
+  "$BUNNY_TOOLS/trustcache" append "$WORK/trustcache.bin" "${SSH_FILES[@]}"
+
+  [[ -s "$WORK/trustcache.bin" ]] || die "trustcache append produced an empty cache"
 
   log "Injecting SSH into RestoreRamDisk.dmg"
   inject_ssh_ramdisk "$WORK/RestoreRamDisk.dmg" "$SSH_TAR" "$WORK/ramdisk-injected.dmg"
   [[ -s "$WORK/ramdisk-injected.dmg" ]] || die "ramdisk injection produced no image"
 
-  "$IMG4" -i "$WORK/ramdisk-injected.dmg" \
-    -o "$BOOT/ramdisk.img4" -M "$IM4M" -A -T rdsk
+  "$IMG4" -i "$WORK/ramdisk-injected.dmg"     -o "$BOOT/ramdisk.img4" -M "$IM4M" -A -T rdsk
 else
-  "$IMG4" -i "$WORK/RestoreRamDisk.dmg" \
-    -o "$BOOT/ramdisk.img4" -M "$IM4M" -A -T rdsk
+  "$IMG4" -i "$WORK/RestoreRamDisk.dmg"     -o "$BOOT/ramdisk.img4" -M "$IM4M" -A -T rdsk
 fi
+
+"$IMG4" -i "$WORK/trustcache.bin"   -o "$BOOT/trustcache.img4" -M "$IM4M" -A -T rtsc
+[[ -s "$BOOT/trustcache.img4" ]] || die "trustcache IMG4 was not produced"
 
 if (( WITH_FW )); then
   for key in AOP ANE AVE ISP GFX SIO; do
@@ -740,15 +755,22 @@ fi
   echo "linux_apfs_backend=linux-apfs-rw"
 } > "$BOOT/chain.info"
 
-# Project boot logo. The source is configurable so logo.jpg can remain untracked.
-LOGO_SOURCE="${BUNNY_LOGO_PATH:-$ROOT/logo.jpg}"
-if [[ ! -f "$LOGO_SOURCE" ]]; then
-  die "boot logo source not found: $LOGO_SOURCE (put logo.jpg in the project root or set BUNNY_LOGO_PATH)"
+# Project boot logo. Prefer an explicit override, then the historical
+# repo-root logo.jpg, then the known-good ICH resource downloaded by setup.
+LOGO_OVERRIDE="$(printenv BUNNY_LOGO_PATH 2>/dev/null || true)"
+if [[ -n "$LOGO_OVERRIDE" ]]; then
+  LOGO_SOURCE="$LOGO_OVERRIDE"
+elif [[ -f "$ROOT/logo.jpg" ]]; then
+  LOGO_SOURCE="$ROOT/logo.jpg"
+elif [[ -f "$BUNNY_RESOURCES/ich_logo.png" ]]; then
+  LOGO_SOURCE="$BUNNY_RESOURCES/ich_logo.png"
+else
+  die "boot logo source not found: set BUNNY_LOGO_PATH, add logo.jpg, or run ./setup_dependencies.sh"
 fi
 [[ -s "$LOGO_SOURCE" ]] || die "boot logo source is empty: $LOGO_SOURCE"
 
-log "Building boot logo from $(basename "$LOGO_SOURCE")"
-"$BASH" "$ROOT/scripts/make_logo.sh" "$LOGO_SOURCE" --out "$BOOT/logo.img4"
+log "Building boot logo from $(basename "$LOGO_SOURCE") for $MODEL"
+BUNNY_LOGO_MODEL="$MODEL" BUNNY_LOGO_CPID="$CPID"   "$BASH" "$ROOT/scripts/make_logo.sh" "$LOGO_SOURCE" --out "$BOOT/logo.img4"
 [[ -s "$BOOT/logo.img4" ]] || die "boot logo generation produced no IMG4"
 
 "$PY" - "$BOOT/logo.img4" <<'PY'
