@@ -94,13 +94,6 @@ show_state "AFTER iBEC GO"
 
 log "Setting display debug background"
 irecovery -c "bgcolor 0 127 127" || true
-log "Setting boot args"
-irecovery -c "setenvnp boot-args rd=md0 -v serial=3 debug=0x2014e wdt=-1"
-irecovery -c "setenv auto-boot false"
-
-echo "==> Boot arguments currently visible to iBoot"
-irecovery -q || true
-
 log "Sending DeviceTree"
 irecovery -f "$BOOT/devicetree.img4"
 irecovery -c devicetree
@@ -128,6 +121,12 @@ show_state "AFTER RAMDISK"
 log "Sending KernelCache"
 irecovery -f "$BOOT/kernelcache.img4.patched"
 show_state "AFTER KERNELCACHE UPLOAD"
+
+log "Setting boot args"
+irecovery -c "setenvnp boot-args rd=md0 -v serial=3 debug=0x2014e wdt=-1"
+irecovery -c "setenv auto-boot false"
+echo "==> Final boot environment"
+irecovery -q || true
 
 log "Booting patched kernel"
 irecovery -c bootx
