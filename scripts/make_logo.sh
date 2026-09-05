@@ -50,7 +50,25 @@ white = sum(1 for p in canvas.getdata() if p[0] > 200)
 print("logo canvas", W, H, "mark", mark, "white_pixels", white)
 if white < 100: raise SystemExit("logo contains fewer than 100 visible white pixels")
 PY
-"$IBOOTIM" "$FULL" "$RAW"
+"$IBOOTIM" -c "$FULL" "$RAW"
+
+# Verify that the generated iBoot Embedded Image is readable again and
+# preserves the exact panel dimensions. This catches malformed color-space
+# headers before the IMG4 is sent to an actual device.
+ROUNDTRIP="$WORK/logo-roundtrip.png"
+"$IBOOTIM" -c "$RAW" "$ROUNDTRIP" >/dev/null
+"$PY" - "$ROUNDTRIP" "$WIDTH" "$HEIGHT" <<'PY'
+import sys
+from pathlib import Path
+from PIL import Image
+p=Path(sys.argv[1]); expected=(int(sys.argv[2]), int(sys.argv[3]))
+im=Image.open(p)
+if im.size != expected:
+    raise SystemExit(f"iBootIm round-trip dimensions mismatch: got={im.size}, expected={expected}")
+if im.getbbox() is None:
+    raise SystemExit("iBootIm round-trip is completely empty")
+print(f"iBootIm round-trip verified: {im.size[0]}x{im.size[1]}")
+PY
 mkdir -p "$(dirname "$OUT")"
 "$IMG4" -i "$RAW" -o "$OUT" -A -T rlgo -M "$IM4M"
 [ -s "$OUT" ] || die "logo IMG4 was not produced"
