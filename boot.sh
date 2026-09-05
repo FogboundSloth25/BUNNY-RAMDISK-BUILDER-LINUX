@@ -122,6 +122,8 @@ if (( USE_LOGO )); then
   irecovery -f "$BOOT/logo.img4"
   if irecovery -c "setpicture 1" || irecovery -c "setpicture" || irecovery -c "setpicture 4" || irecovery -c "setpicture 0"; then
     echo "==> setpicture accepted"
+    # setpicture selects the uploaded image; bgcolor forces iBoot to refresh the LCD.
+    irecovery -c "bgcolor 0 0 0" || die "logo selected but bgcolor refresh failed"
     sleep "${BUNNY_LOGO_HOLD_SECS:-3}"
   else
     echo "[!] all setpicture variants failed; continuing without logo" >&2
