@@ -77,7 +77,89 @@ fi
 VERSION="unknown"
 BUILD=""
 IPSW_URL="$DIRECT_URL"
+IPSW_SHA256=""
 API_JSON=""
+LOCAL_REMOTE_IPSW=""
+
+extract_manifest_from_ipsw() {
+  local ipsw="$1" out="$2"
+  "$PY" - "$ipsw" "$out" <<'PY'
+import sys, zipfile
+from pathlib import Path
+ipsw, out = map(Path, sys.argv[1:])
+with zipfile.ZipFile(ipsw) as z:
+    try:
+        data = z.read("BuildManifest.plist")
+    except KeyError:
+        raise SystemExit("BuildManifest.plist not found in IPSW")
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_bytes(data)
+PY
+}
+
+resolve_doh_ipv4() {
+  local host="$1" answer
+  answer="$(
+    curl --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+      --resolve "cloudflare-dns.com:443:1.1.1.1" \
+      -H 'accept: application/dns-json' \
+      "https://cloudflare-dns.com/dns-query?name=$host&type=A" |
+      jq -r '.Answer[]? | select(.type == 1) | .data' |
+      head -n1
+  )"
+  [[ -n "$answer" && "$answer" != "null" ]] || return 1
+  printf '%s\n' "$answer"
+}
+
+url_host() {
+  "$PY" - "$1" <<'PY'
+from urllib.parse import urlparse
+import sys
+host = urlparse(sys.argv[1]).hostname
+if not host:
+    raise SystemExit("invalid URL")
+print(host)
+PY
+}
+
+download_remote_ipsw() {
+  local url="$1" out="$2" expected="$3"
+  local host ip partial actual
+
+  host="$(url_host "$url")"
+  [[ -n "$host" ]] || die "could not determine IPSW host"
+
+  ip="$(resolve_doh_ipv4 "$host" || true)"
+  [[ -n "$ip" ]] || die "DNS-over-HTTPS could not resolve $host"
+
+  log "Apple CDN: $host -> $ip"
+  mkdir -p "$(dirname "$out")"
+  partial="$out.partial"
+
+  if [[ ! -s "$out" ]]; then
+    log "Downloading IPSW (resume supported)"
+    curl --fail --show-error --location --retry 8 --retry-all-errors \
+      --connect-timeout 20 --speed-time 60 --speed-limit 1024 \
+      --continue-at - --resolve "$host:443:$ip" \
+      --output "$partial" "$url"
+    mv -f "$partial" "$out"
+  fi
+
+  [[ -s "$out" ]] || die "downloaded IPSW is empty"
+
+  if [[ -n "$expected" && "$expected" != "null" ]]; then
+    log "Verifying IPSW SHA-256"
+    actual="$(sha256sum "$out" | awk '{print $1}')"
+    [[ "${actual,,}" == "${expected,,}" ]] ||
+      die "IPSW SHA-256 mismatch: expected $expected, got $actual"
+    echo "  SHA256: $actual"
+  fi
+
+  if command -v zipinfo >/dev/null 2>&1; then
+    zipinfo -t "$out" >/dev/null || die "downloaded IPSW failed ZIP validation"
+  fi
+}
+
 
 if [[ -n "$LOCAL_IPSW" ]]; then
   [[ -f "$LOCAL_IPSW" ]] || die "IPSW not found: $LOCAL_IPSW"
