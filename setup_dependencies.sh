@@ -83,12 +83,13 @@ if ! command -v iproxy >/dev/null 2>&1; then
   esac
 fi
 
-log "Fetching A12/A13 patchfinders"
+log "Fetching A12/A13 patchfinders and usbliter8ctl"
 curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/iboot_patchfinder.py -o "$BUNNY_PATCH/iboot_patchfinder.py"
 curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/kernel_patchfinder.py -o "$BUNNY_PATCH/kernel_patchfinder.py"
 curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/sptm_patchfinder.py -o "$BUNNY_PATCH/sptm_patchfinder.py"
 curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/txm_patchfinder.py -o "$BUNNY_PATCH/txm_patchfinder.py"
-chmod 755 "$BUNNY_PATCH"/*.py
+curl -fsSL https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/usbliter8ctl -o "$BUNNY_TOOLS/usbliter8ctl"
+chmod 755 "$BUNNY_PATCH"/*.py "$BUNNY_TOOLS/usbliter8ctl"
 
 if [[ ! -x "$BUNNY_TOOLS/trustcache" ]]; then
   SRC="$BUNNY_THIRD_PARTY/trustcache"
@@ -129,9 +130,12 @@ if [[ -d "$BUNNY_THIRD_PARTY/libirecovery/udev" ]]; then
   sudo udevadm trigger
 fi
 
+echo
 for tool in python3 ipsw irecovery; do
   command -v "$tool" >/dev/null 2>&1 && echo "[OK] $tool" || echo "[MISS] $tool"
 done
+command -v iproxy >/dev/null 2>&1 && echo "[OK] iproxy" || echo "[WARN] iproxy unavailable"
+[[ -x "$BUNNY_TOOLS/usbliter8ctl" ]] && echo "[OK] usbliter8ctl"
 [[ -x "$BUNNY_TOOLS/trustcache" ]] && echo "[OK] trustcache"
 [[ -x "$BUNNY_TOOLS/mkapfs" ]] && echo "[OK] mkapfs"
 [[ -f "$APFS_SRC/apfs.ko" ]] && echo "[OK] apfs.ko"
