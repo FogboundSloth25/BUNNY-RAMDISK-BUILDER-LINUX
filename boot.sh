@@ -81,7 +81,7 @@ require_file "$BOOT/kernelcache.img4.patched"
 log "Loading patched iBSS"
 show_state "BEFORE iBSS"
 usbliter8ctl boot "$BOOT/iBSS.patched.raw"
-wait_device 5000 || die "iPhone did not reappear after iBSS"
+wait_mode Recovery 120 || die "iPhone did not enter USB Recovery after iBSS"
 show_state "AFTER iBSS"
 
 log "Sending patched iBEC"
@@ -89,49 +89,64 @@ irecovery -f "$BOOT/iBEC.patched.img4"
 show_state "AFTER iBEC UPLOAD"
 log "Starting patched iBEC"
 irecovery -c go
-wait_device 8000 || die "iPhone did not reappear after iBEC"
+wait_mode Recovery 120 || die "iPhone did not enter USB Recovery after iBEC"
 show_state "AFTER iBEC GO"
 
 log "Setting display debug background"
 irecovery -c "bgcolor 0 127 127" || true
+
 log "Sending DeviceTree"
 irecovery -f "$BOOT/devicetree.img4"
 irecovery -c devicetree
-show_state "AFTER DEVICETREE"
 
-for key in SPTM TXM AOP ANE AVE ISP GFX SIO; do
-  f="$BOOT/$key.img4"
-  [[ -s "$f" ]] || continue
+send_fw() {
+  local key="$1" f="$BOOT/$1.img4"
+  [[ -s "$f" ]] || return 0
   log "Sending $key"
   irecovery -f "$f"
   irecovery -c firmware
-  show_state "AFTER $key"
-done
+}
+
+if [[ ! -f "$BOOT/iBSS.patched.raw" ]]; then
+  # Direct iBEC path: upstream sends USB/coprocessor firmware before DT.
+  for key in SPTM TXM AOP ANE AVE ISP GFX SIO; do
+    [[ -s "$BOOT/$key.img4" ]] && send_fw "$key"
+  done
+  log "Sending DeviceTree"
+  irecovery -f "$BOOT/devicetree.img4"
+  irecovery -c devicetree
+fi
 
 log "Sending TrustCache"
 irecovery -f "$BOOT/trustcache.img4"
 irecovery -c firmware
-show_state "AFTER TRUSTCACHE"
 
 log "Sending RestoreRamDisk"
 irecovery -f "$BOOT/ramdisk.img4"
 irecovery -c ramdisk
-show_state "AFTER RAMDISK"
+
+# Critical for normal USB enumeration on the iBSS/Option-B path:
+# firmware follows the ramdisk and precedes the kernel, matching ICH/BUNNY.
+if [[ -f "$BOOT/iBSS.patched.raw" ]]; then
+  for key in SPTM TXM AOP ANE AVE ISP GFX SIO; do
+    [[ -s "$BOOT/$key.img4" ]] && send_fw "$key"
+  done
+fi
 
 log "Sending KernelCache"
 irecovery -f "$BOOT/kernelcache.img4.patched"
-show_state "AFTER KERNELCACHE UPLOAD"
 
 log "Setting boot args"
-irecovery -c "setenvnp boot-args rd=md0 -v serial=3 debug=0x2014e wdt=-1"
-irecovery -c "setenv auto-boot false"
+irecovery -c "setenvnp boot-args rd=md0 -v debug=0x14e serial=3 wdt=-1 keepsyms=1" ||   irecovery -c "setenv boot-args rd=md0 -v debug=0x14e serial=3 wdt=-1 keepsyms=1"
+irecovery -c "setenv auto-boot false" || true
+
 echo "==> Final boot environment"
-irecovery -q || true
+irecovery -q 2>&1 || true
 
 log "Booting patched kernel"
 irecovery -c bootx
 sleep 0.5
 echo "==> Device state after bootx"
-irecovery -q || true
+irecovery -q 2>&1 || true
 
 echo "Boot command sent. Check the display for verbose output, then run ./ssh.sh when SSH is available."
