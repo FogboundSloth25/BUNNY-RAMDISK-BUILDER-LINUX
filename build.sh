@@ -506,7 +506,8 @@ echo "kc.bpatch: $PATCH_COUNT byte patches"
 "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/DeviceTree.im4p" --output "$BOOT/devicetree.img4" --im4m "$IM4M"
 "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/RestoreTrustCache.im4p" --output "$BOOT/trustcache.img4" --im4m "$IM4M"
 
-if [[ -f "$WORK/RestoreSEP.im4p" ]]; then\n  "$IMG4" -i "$WORK/RestoreSEP.im4p" -o "$BOOT/sep-firmware.img4" -M "$IM4M" -T rsep\nfi\n\nif [[ -f "$WORK/SPTM.im4p" ]]; then
+if (( WITH_SEP )); then
+  "$IMG4" -i "$WORK/RestoreSEP.im4p" -o "$BOOT/sep-firmware.img4" -M "$IM4M" -T rsep\nfi\n\nif [[ -f "$WORK/SPTM.im4p" ]]; then
   "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/SPTM.im4p" --output "$BOOT/sptm.img4" --im4m "$IM4M"
 fi
 if [[ -f "$WORK/TXM.im4p" ]]; then
