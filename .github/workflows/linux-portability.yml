@@ -77,7 +77,7 @@ jobs:
           git clone --depth 1 https://github.com/linux-apfs/apfsprogs.git "$src"
           rm -rf "$stage"
           mkdir -p "$stage"
-          rsync -a --exclude='.git' "$src/" "$stage/"
+          rsync -a "$src/" "$stage/"
           commit="$(git -C "$src" rev-parse HEAD)"
           printf '#define GIT_COMMIT\t"%s"\n' "$commit" > "$stage/mkapfs/version.h"
           make -C "$stage/mkapfs" -j"$(nproc)"
