@@ -103,13 +103,14 @@ if [[ ! -s "$BOOT/logo.img4" && -f "$ROOT/logo.jpg" ]]; then
   log "Building missing boot logo from logo.jpg"
   "$ROOT/scripts/make_logo.sh" "$ROOT/logo.jpg" --out "$BOOT/logo.img4"
 fi
-if [[ -s "$BOOT/logo.img4" ]]; then
-  log "Showing project boot logo"
-  irecovery -f "$BOOT/logo.img4"
-  irecovery -c "setpicture 1" || irecovery -c setpicture || true
-  sleep "${BUNNY_LOGO_HOLD_SECS:-2}"
-  irecovery -c "bgcolor 0 0 0" || true
+require_file "$BOOT/logo.img4"
+log "Showing project boot logo"
+echo "    logo: $BOOT/logo.img4 ($(stat -c %s "$BOOT/logo.img4") bytes)"
+irecovery -f "$BOOT/logo.img4"
+if ! irecovery -c "setpicture 1"; then
+  die "setpicture 1 failed after logo upload; refusing to continue without verified boot logo"
 fi
+sleep "${BUNNY_LOGO_HOLD_SECS:-3}"
 
 send_fw() {
   local key="$1" f="$BOOT/$1.img4"
