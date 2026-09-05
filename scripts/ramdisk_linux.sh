@@ -4,7 +4,6 @@ set -euo pipefail
 # This file is sourced by build.sh. Do not derive the project root from $0:
 # when sourced, $0 belongs to the caller (build.sh), not this file.
 ROOT="${BUNNY_ROOT:?BUNNY_ROOT must be set by env.sh}"
-source /dev/null
 
 magic() {
   "$ROOT/.venv/bin/python" - "$1" <<'PY'
@@ -93,6 +92,6 @@ inject_ssh_ramdisk() {
   case "$fs" in
     apfs) inject_apfs "$stock" "$ssh_tar" "$out" ;;
     hfsplus) inject_hfsplus "$stock" "$ssh_tar" "$out" ;;
-    *) die "unsupported ramdisk filesystem" ;;
+    *) die "unsupported ramdisk filesystem: $fs" ;;
   esac
 }
