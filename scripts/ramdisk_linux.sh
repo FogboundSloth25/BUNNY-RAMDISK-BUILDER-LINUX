@@ -350,14 +350,6 @@ inject_apfs() {
   done < "$ssh_list"
   rm -rf "$ssh_stage"
 
-  # rc.boot is a shell-script launcher and is intentionally outside the
-  # Mach-O trustcache list. Install it separately after the signed SSH payload.
-  if [[ -n "${BUNNY_RC_BOOT:-}" && -s "$BUNNY_RC_BOOT" ]]; then
-    sudo install -D -m 0755 "$BUNNY_RC_BOOT" "$src_mp/etc/rc.boot" ||
-      die "failed to install Bunny rc.boot"
-    echo "    installed Bunny rc.boot SSH entrypoint"
-  fi
-
   if [[ -n "${BUNNY_RESTORED_EXTERNAL:-}" && -s "$BUNNY_RESTORED_EXTERNAL" ]]; then
     sudo install -D -m 0755 "$BUNNY_RESTORED_EXTERNAL"       "$src_mp/usr/local/bin/restored_external" ||
       die "failed to install restored_external"
