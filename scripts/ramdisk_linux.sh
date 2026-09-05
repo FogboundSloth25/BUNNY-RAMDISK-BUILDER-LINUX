@@ -253,16 +253,20 @@ inject_apfs() {
   fi
 
   log "Copying stock APFS ramdisk"
-  # linux-apfs-rw currently does not implement POSIX ACL operations. Preserve
-  # the filesystem tree, modes, owners and symlinks, but do not make ACL
-  # restoration a fatal operation.
-  if ! (cd "$src_mp" && sudo tar --no-acls --xattrs --numeric-owner -cpf - .) |
-     (cd "$dst_mp" && sudo tar --no-acls --xattrs --numeric-owner -xpf -); then
+  # Do not copy xattrs/ACLs through linux-apfs-rw. The driver can report
+  # oversized/unsupported xattr lists (E2BIG) and reproducing them is neither
+  # required for the builder's injected ramdisk nor reliable on Linux.
+  if ! (cd "$src_mp" && sudo tar --no-acls --no-xattrs --numeric-owner -cpf - .) |
+     (cd "$dst_mp" && sudo tar --no-acls --no-xattrs --numeric-owner -xpf -); then
     die "failed to copy stock APFS ramdisk"
   fi
 
+  available="$(df -B1 --output=avail "$dst_mp" | tail -n1 | tr -d '[:space:]')"
+  echo "    available after copy: $available bytes"
+  [[ "$available" =~ ^[0-9]+$ ]] || die "could not determine APFS free space after copy"
+
   log "Injecting SSH"
-  sudo tar --no-acls --xattrs --numeric-owner -xpf "$ssh_tar" -C "$dst_mp"
+  sudo tar --no-acls --no-xattrs --numeric-owner -xpf "$ssh_tar" -C "$dst_mp"
   sync
 
   if ! sudo find "$dst_mp" -type f \( -name ssh -o -name dropbear -o -name sshd \) -print -quit | grep -q .; then
