@@ -74,7 +74,7 @@ MARK="${MARK:-$(nr_logo_mark_for_panel "$WIDTH" "$HEIGHT")}"
 CPID="${BUNNY_CPID:-$CPID}"
 
 IBOOTIM="$BUNNY_TOOLS/ibootim"
-IMG4="$BUNNY_TOOLS/img4"
+IMG4="$ROOT/.local/img4"
 IM4M="$BUNNY_RESOURCES/IM4M_$CPID"
 [[ -f "$IM4M" ]] || IM4M="$BUNNY_RESOURCES/IM4M_0x8020"
 
