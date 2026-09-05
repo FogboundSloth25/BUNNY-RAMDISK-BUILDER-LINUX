@@ -201,6 +201,61 @@ unmount_image() {
   rm -f "$statefile"
 }
 
+
+prepare_ssh_tree() {
+  local ssh_tar="$1" out="$2"
+  [[ -s "$ssh_tar" ]] || die "missing SSH payload: $ssh_tar"
+
+  rm -rf "$out"
+  mkdir -p "$out"
+
+  # Fail closed on malformed or path-traversal archive names before extraction.
+  local member
+  while IFS= read -r member; do
+    member="$(printf '%s\n' "$member" | sed 's#^\./##; s#/$##')"
+    [[ -n "$member" ]] || continue
+    case "$member" in
+      /*|../*|*/../*|*/..) die "unsafe SSH archive member: $member" ;;
+    esac
+  done < <(tar -tzf "$ssh_tar" 2>/dev/null) ||
+    die "could not list SSH payload archive"
+
+  tar -xzf "$ssh_tar" -C "$out" --no-same-owner --no-acls --no-xattrs --numeric-owner ||
+    die "could not extract SSH payload archive"
+
+  # Current ICH payloads are normally rooted directly at usr/bin/usr/local.
+  # Accept older wrappers as well and normalize them to the ramdisk root.
+  if [[ -d "$out/work/sshtar" && ! -d "$out/usr" && ! -d "$out/bin" && ! -d "$out/sbin" ]]; then
+    cp -a "$out/work/sshtar/." "$out/" || die "failed to normalize work/sshtar SSH tree"
+    rm -rf "$out/work"
+  elif [[ -d "$out/sshtar" && ! -d "$out/usr" && ! -d "$out/bin" && ! -d "$out/sbin" ]]; then
+    cp -a "$out/sshtar/." "$out/" || die "failed to normalize sshtar SSH tree"
+    rm -rf "$out/sshtar"
+  fi
+
+  [[ -d "$out/usr" || -d "$out/bin" || -d "$out/sbin" ]] ||
+    die "SSH archive has no expected Unix tree after normalization"
+}
+
+verify_ssh_allowlist() {
+  local root="$1" list="$2"
+  [[ -s "$list" ]] || die "missing SSH payload allowlist: $list"
+
+  local entry rel
+  while IFS= read -r entry || [[ -n "$entry" ]]; do
+    entry="$(printf '%s\n' "$entry" | sed -E 's/[[:space:]]*#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//')"
+    [[ -n "$entry" ]] || continue
+
+    case "$entry" in
+      work/sshtar/*) rel="$(printf '%s\n' "$entry" | sed 's#^work/sshtar/##')" ;;
+      *) rel="$entry" ;;
+    esac
+
+    [[ -f "$root/$rel" || -L "$root/$rel" ]] ||
+      die "SSH payload missing allowlisted file: $rel"
+  done < "$list"
+}
+
 inject_apfs() {
   local stock="$1" ssh_tar="$2" out="$3" stock_offset="$4"
   load_apfs
@@ -224,27 +279,22 @@ inject_apfs() {
   [[ "$free_before" =~ ^[0-9]+$ ]] || die "could not determine APFS free space"
   echo "    free before injection: $free_before bytes"
 
-  log "Injecting SSH into APFS ramdisk"
-  local ssh_list="${BUNNY_RESOURCES}/sshtarlist.txt"
-  if [[ -s "$ssh_list" ]]; then
-    # sshtarlist.txt is intentionally a project-relative list used by the
-    # upstream trustcache builder (work/sshtar/<target>). The tar archive
-    # itself is rooted at sshtar/, so create a temporary member list with
-    # exactly the archive-relative names.
-    local ssh_tar_list
-    ssh_tar_list="$(mktemp /tmp/bunny-sshtar-list.XXXXXX)"
-    sed -E 's#^work/sshtar/##; /^[[:space:]]*$/d' "$ssh_list" > "$ssh_tar_list"
-    if ! sudo tar --no-acls --no-xattrs --no-same-owner --numeric-owner \
-        -xzf "$ssh_tar" -C "$src_mp" -T "$ssh_tar_list"; then
-      rm -f "$ssh_tar_list"
-      die "SSH payload injection failed: archive/list mismatch"
-    fi
-    rm -f "$ssh_tar_list"
-  else
-    die "missing SSH payload allowlist: $ssh_list"
-  fi
-  sync
 
+  log "Injecting SSH into APFS ramdisk"
+  local ssh_list="$BUNNY_RESOURCES/sshtarlist.txt"
+  local ssh_stage="$ROOT/work/ssh-stage-apfs.$$"
+  prepare_ssh_tree "$ssh_tar" "$ssh_stage"
+  verify_ssh_allowlist "$ssh_stage" "$ssh_list"
+
+  sudo cp -a "$ssh_stage/." "$src_mp/" ||
+    { rm -rf "$ssh_stage"; die "SSH payload injection failed while copying into APFS"; }
+  rm -rf "$ssh_stage"
+
+  if [[ -n "$BUNNY_RESTORED_EXTERNAL" && -s "$BUNNY_RESTORED_EXTERNAL" ]]; then
+    sudo install -D -m 0755 "$BUNNY_RESTORED_EXTERNAL"       "$src_mp/usr/local/bin/restored_external" ||
+      die "failed to install restored_external"
+    echo "    installed ICH restored_external"
+  fi
   free_after="$(df -B1 --output=avail "$src_mp" | tail -n1 | tr -d '[:space:]')"
   [[ "$free_after" =~ ^[0-9]+$ ]] || die "could not determine APFS free space after injection"
   echo "    free after injection: $free_after bytes"
@@ -264,7 +314,7 @@ inject_apfs() {
   # Re-open the image read-only as a final filesystem integrity check.
   local check_mp="$ROOT/work/apfs-check.$"
   mkdir -p "$check_mp"
-  mount_image "$out" "$check_mp" ro apfs 0
+  mount_image "$out" "$check_mp" ro apfs "$stock_offset"
   sudo test -d "$check_mp/usr" || die "APFS integrity check failed: /usr is missing"
   sudo test -d "$check_mp/private" || die "APFS integrity check failed: /private is missing"
   unmount_image "$check_mp"
@@ -280,10 +330,19 @@ inject_hfsplus() {
   log "Mounting stock HFS+ ramdisk (offset=$stock_offset)"
   mount_image "$out" "$mp" rw hfsplus "$stock_offset"
 
+
   log "Injecting SSH"
-  sudo tar --xattrs --acls --numeric-owner -xpf "$ssh_tar" -C "$mp"
-  sync
-  unmount_image "$mp"
+  local ssh_stage="$ROOT/work/ssh-stage-hfs.$$"
+  prepare_ssh_tree "$ssh_tar" "$ssh_stage"
+  verify_ssh_allowlist "$ssh_stage" "$BUNNY_RESOURCES/sshtarlist.txt"
+  sudo cp -a "$ssh_stage/." "$mp/" || die "SSH payload injection failed"
+  rm -rf "$ssh_stage"
+
+  if [[ -n "$BUNNY_RESTORED_EXTERNAL" && -s "$BUNNY_RESTORED_EXTERNAL" ]]; then
+    sudo install -D -m 0755 "$BUNNY_RESTORED_EXTERNAL"       "$mp/usr/local/bin/restored_external" ||
+      die "failed to install restored_external"
+  fi
+ unmount_image "$mp"
   rmdir "$mp" 2>/dev/null || true
 }
 
