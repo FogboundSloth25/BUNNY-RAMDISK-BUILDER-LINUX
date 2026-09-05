@@ -45,7 +45,7 @@ case "$1" in
   --kernel) (($# >= 2)) || die "--kernel needs a value"; KERNEL_MODE="$2"; shift 2 ;;
   --use-ibss) USE_IBSS=1; shift ;;
   --no-ssh) INJECT_SSH=0; shift ;;
-  --no-fw) WITH_FW=0; shift ;;
+  --no-fw) WITH_FW=0; shift ;;\n  --no-sep) WITH_SEP=0; shift ;;
   --dry-run) DRY_RUN=1; shift ;;
   -h|--help) usage; exit 0 ;;
   *) usage >&2; die "unknown option: $1" ;;
@@ -503,7 +503,7 @@ echo "kc.bpatch: $PATCH_COUNT byte patches"
 "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/DeviceTree.im4p" --output "$BOOT/devicetree.img4" --im4m "$IM4M"
 "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/RestoreTrustCache.im4p" --output "$BOOT/trustcache.img4" --im4m "$IM4M"
 
-if [[ -f "$WORK/SPTM.im4p" ]]; then
+if [[ -f "$WORK/RestoreSEP.im4p" ]]; then\n  "$IMG4" -i "$WORK/RestoreSEP.im4p" -o "$BOOT/sep-firmware.img4" -M "$IM4M" -T rsep\nfi\n\nif [[ -f "$WORK/SPTM.im4p" ]]; then
   "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/SPTM.im4p" --output "$BOOT/sptm.img4" --im4m "$IM4M"
 fi
 if [[ -f "$WORK/TXM.im4p" ]]; then
