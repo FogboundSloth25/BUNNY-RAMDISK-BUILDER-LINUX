@@ -72,6 +72,7 @@ wait_mode() {
 }
 
 require_file "$BOOT/iBEC.patched.img4"
+require_file "$BOOT/iBEC.patched.raw"
 require_file "$BOOT/devicetree.img4"
 require_file "$BOOT/trustcache.img4"
 require_file "$BOOT/ramdisk.img4"
@@ -96,17 +97,20 @@ if [[ -s "$BOOT/iBSS.patched.raw" ]]; then
   usbliter8ctl boot "$BOOT/iBSS.patched.raw"
   wait_mode Recovery 120 || die "iPhone did not enter USB Recovery after iBSS"
   show_state "AFTER iBSS"
-else
-  log "Using direct patched iBEC path"
-fi
 
-log "Sending patched iBEC"
-irecovery -f "$BOOT/iBEC.patched.img4"
-show_state "AFTER iBEC UPLOAD"
-log "Starting patched iBEC"
-irecovery -c go
-wait_mode Recovery 120 || die "iPhone did not enter USB Recovery after iBEC"
-show_state "AFTER iBEC GO"
+  # iBSS has already handed control to the Recovery-side iBEC. Do not upload
+  # the iBEC a second time here; continue directly with Recovery commands.
+else
+  log "Booting patched iBEC directly through usbliter8ctl"
+  show_state "BEFORE DIRECT iBEC"
+  # usbliter8ctl CUSTOM_BOOT is the handoff primitive used by the working
+  # ICH/usbliter8 flow. Uploading an IMG4 with irecovery while the device is
+  # still in DFU does not execute iBEC; it leaves the phone in DFU, so a later
+  # "go" cannot perform the expected handoff.
+  usbliter8ctl boot "$BOOT/iBEC.patched.raw"
+  wait_mode Recovery 120 || die "iPhone did not enter USB Recovery after direct iBEC boot"
+  show_state "AFTER DIRECT iBEC"
+fi
 
 log "Setting display debug background"
 irecovery -c "bgcolor 0 0 0" || true
