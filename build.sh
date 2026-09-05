@@ -158,7 +158,7 @@ mkdir -p "$CACHE"
 path_for() { jq -r --arg key "$1" '.[$key] // empty' <<<"$IDENTITY"; }
 
 fetch_member() {
-  local key="$1" p dst tmpdir candidate pattern base
+  local key="$1" p dst tmpdir candidate pattern base log_file
   p="$(path_for "$key")"
   [[ -n "$p" ]] || return 0
   dst="$CACHE/$(basename "$p")"
@@ -179,15 +179,23 @@ out.write_bytes(data)
 PY
     else
       tmpdir="$(mktemp -d /tmp/bunny-component.XXXXXX)"
+      log_file="$tmpdir/ipsw.log"
       base="$(basename "$p")"
       pattern="$(printf '%s' "$p" | sed 's/[][\\.^$*+?(){}|]/\\&/g')$"
-      if ! ipsw extract --remote "$IPSW_URL" \
-          --output "$tmpdir" --flat --pattern "$pattern"; then
+
+      if ! ipsw extract "$IPSW_URL" --remote \
+          --output "$tmpdir" --flat --pattern "$pattern" >"$log_file" 2>&1; then
+        echo "[ipsw] Failed to extract $key using full path regex:" >&2
+        cat "$log_file" >&2 || true
         rm -rf "$tmpdir"
         tmpdir="$(mktemp -d /tmp/bunny-component.XXXXXX)"
+        log_file="$tmpdir/ipsw.log"
         pattern="$(printf '%s' "$base" | sed 's/[][\\.^$*+?(){}|]/\\&/g')$"
-        if ! ipsw extract --remote "$IPSW_URL" \
-            --output "$tmpdir" --flat --pattern "$pattern"; then
+
+        if ! ipsw extract "$IPSW_URL" --remote \
+            --output "$tmpdir" --flat --pattern "$pattern" >"$log_file" 2>&1; then
+          echo "[ipsw] Basename fallback also failed for $key:" >&2
+          cat "$log_file" >&2 || true
           rm -rf "$tmpdir"
           die "ipsw could not fetch $key ($p)"
         fi
@@ -195,9 +203,12 @@ PY
 
       candidate="$(find "$tmpdir" -type f -name "$base" -print -quit)"
       [[ -s "$candidate" ]] || {
+        echo "[ipsw] Extraction completed but produced no file named $base" >&2
+        cat "$log_file" >&2 || true
         rm -rf "$tmpdir"
         die "remote IPSW extraction produced no $key ($base)"
       }
+
       cp -f "$candidate" "$dst"
       rm -rf "$tmpdir"
     fi
