@@ -482,8 +482,26 @@ extract_raw "$WORK/KernelCache.im4p" "$WORK/kernelcache.raw"
 # kerneldiff compares raw Mach-O bytes, but img4 -P operates on an IM4P
 # container (the reference workflow calls this kernelcache.dec).
 rm -f "$WORK/kernelcache.dec"
+# Produce the decompressed IM4P container used by img4 -P.  This is distinct
+# from kernelcache.raw: kerneldiff works on raw Mach-O bytes, while img4 -P
+# expects the original IM4P container with its payload decompressed.
 "$IMG4" -i "$WORK/KernelCache.im4p" -o "$WORK/kernelcache.dec" -D
 [[ -s "$WORK/kernelcache.dec" ]] || die "failed to create decompressed kernel IM4P: $WORK/kernelcache.dec"
+
+# Fail early if the -D product is not a Mach-O-bearing IM4P.
+"$PY" - "$WORK/kernelcache.dec" <<'PY'
+import sys
+from pathlib import Path
+from pyimg4 import IM4P
+p = IM4P(Path(sys.argv[1]).read_bytes())
+payload = p.payload
+if payload.compression:
+    payload.decompress()
+data = payload.output().data
+if data[:4] not in (bytes.fromhex("cffaedfe"), bytes.fromhex("feedfacf")):
+    raise SystemExit(f"decompressed KernelCache IM4P is not Mach-O: magic={data[:4].hex()}")
+print(f"decompressed KernelCache IM4P verified: Mach-O payload={len(data)} bytes")
+PY
 
 (( USE_IBSS )) && extract_raw "$WORK/iBSS.im4p" "$WORK/iBSS.raw"
 if (( USE_IBSS )); then
@@ -599,7 +617,7 @@ payload = obj.im4p.payload
 if payload.compression:
     payload.decompress()
 data = payload.output().data
-if len(data) < 4 or data[:4] not in (b"\\xcf\\xfa\\xed\\xfe", b"\\xfe\\xed\\xfa\\xcf"):
+if len(data) < 4 or data[:4] not in (bytes.fromhex("cffaedfe"), bytes.fromhex("feedfacf")):
     raise SystemExit(f"kernel IMG4 payload is not Mach-O: magic={data[:4].hex()}")
 
 props = getattr(obj.im4p, "properties", []) or []
