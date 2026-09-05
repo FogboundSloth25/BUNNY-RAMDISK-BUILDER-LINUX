@@ -324,42 +324,55 @@ extract_raw() {
   local in="$1" out="$2"
   rm -f "$out"
 
-  # ipsw's IM4P extractor handles decompression and, when keys are available,
-  # AES decryption through the keybag database. This is required for older
-  # signed/encrypted firmware payloads and is safer than reading payload.data
-  # directly with pyimg4.
-  if ipsw img4 im4p extract --lookup \
-      --lookup-device "$PRODUCT" \
-      --lookup-build "$BUILD" \
-      --output "$out" "$in"; then
-    [[ -s "$out" ]] || die "ipsw produced an empty decrypted payload: $in"
-    return 0
-  fi
-
-  # Fallback for payloads that are already plain/decompressed.
   "$PY" - "$in" "$out" <<'PY'
 import sys
 from pathlib import Path
-from pyimg4 import IM4P
+import pyimg4
 
 src, out = map(Path, sys.argv[1:])
-item = IM4P(src.read_bytes())
-data = item.payload.data
+
+try:
+    item = pyimg4.IM4P(src.read_bytes())
+except Exception as exc:
+    raise SystemExit(f"failed to parse IM4P {src}: {exc}")
+
+payload = item.payload
+
+if payload.encrypted:
+    raise SystemExit(
+        f"IM4P payload is encrypted: {src}. "
+        "A valid IV/key or firmware keybag is required."
+    )
+
+if payload.compression != pyimg4.Compression.NONE:
+    print(f"decompressing {payload.compression.name}: {src}")
+    try:
+        payload.decompress()
+    except Exception as exc:
+        raise SystemExit(f"failed to decompress {src}: {exc}")
+
+data = payload.output().data
 if not data:
-    raise SystemExit(f"empty IM4P payload: {src}")
+    raise SystemExit(f"empty IM4P payload after processing: {src}")
+
 out.write_bytes(data)
+print(f"extracted {len(data)} bytes -> {out}")
 PY
+
   [[ -s "$out" ]] || die "empty extracted payload: $out"
 
-  # Patchfinders operate on Mach-O images. If the IM4P payload is still
-  # encrypted/compressed, fail before patching instead of reporting 0 targets.
   "$PY" - "$out" <<'PY'
 from pathlib import Path
 import sys
-p=Path(sys.argv[1])
-d=p.read_bytes()[:4]
-if d not in (b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf"):
-    raise SystemExit(f"extracted payload is not Mach-O: {p} magic={d.hex()}")
+
+p = Path(sys.argv[1])
+magic = p.read_bytes()[:4]
+
+# 64-bit little/big-endian Mach-O.
+if magic not in (b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf"):
+    raise SystemExit(
+        f"extracted payload is not Mach-O: {p} magic={magic.hex()}"
+    )
 PY
 }
 
