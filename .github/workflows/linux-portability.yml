@@ -105,11 +105,12 @@ jobs:
       - name: Install IMG4 dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake libssl-dev liblzfse-dev 2>/dev/null || true
+          sudo apt-get install -y build-essential cmake libssl-dev
       - name: Build img4lib
         run: |
           set -euo pipefail
           git clone --recursive --depth 1 https://github.com/xerub/img4lib.git "$RUNNER_TEMP/img4lib"
+          make -C "$RUNNER_TEMP/img4lib/lzfse" -j"$(nproc)"
           make -C "$RUNNER_TEMP/img4lib" -j"$(nproc)"
           test -x "$RUNNER_TEMP/img4lib/img4"
           "$RUNNER_TEMP/img4lib/img4" -h >/tmp/img4-help
