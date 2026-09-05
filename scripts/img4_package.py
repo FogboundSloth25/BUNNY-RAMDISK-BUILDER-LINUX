@@ -4,29 +4,37 @@ import argparse
 from pyimg4 import IMG4, IM4M, IM4P, PayloadProperty, Compression
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--im4p", required=True)
+ap.add_argument("--im4p")
 ap.add_argument("--output", required=True)
 ap.add_argument("--im4m", required=True)
-ap.add_argument("--raw", default=None)
-ap.add_argument("--fourcc", default=None)
+ap.add_argument("--raw")
+ap.add_argument("--fourcc")
+ap.add_argument("--description", default="")
 ap.add_argument("--lzfse", action="store_true")
-a = ap.parse_args()
+args = ap.parse_args()
 
-template = IM4P(Path(a.im4p).read_bytes())
-if a.raw:
+if not args.im4p and not args.raw:
+    raise SystemExit("one of --im4p or --raw is required")
+
+template = IM4P(Path(args.im4p).read_bytes()) if args.im4p else None
+
+if args.raw:
     item = IM4P(
-        fourcc=a.fourcc or template.fourcc,
-        description=template.description,
-        payload=Path(a.raw).read_bytes(),
+        fourcc=args.fourcc or (template.fourcc if template else "rdsk"),
+        description=args.description or (template.description if template else "RestoreRamDisk"),
+        payload=Path(args.raw).read_bytes(),
     )
-    for prop in template.properties or []:
+    for prop in (template.properties if template else []) or []:
         item.add_property(PayloadProperty(fourcc=prop.fourcc, value=prop.value))
-    if a.lzfse:
+    if args.lzfse:
         item.payload.compress(Compression.LZFSE)
 else:
     item = template
 
-Path(a.output).write_bytes(
-    IMG4(im4p=item, im4m=IM4M(Path(a.im4m).read_bytes())).output()
+if not item:
+    raise SystemExit("could not construct IM4P")
+
+Path(args.output).write_bytes(
+    IMG4(im4p=item, im4m=IM4M(Path(args.im4m).read_bytes())).output()
 )
-print(a.output)
+print(args.output)
