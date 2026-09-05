@@ -350,6 +350,11 @@ if (( WITH_FW )); then
 fi
 fetch_member SPTM || true
 fetch_member TXM || true
+if (( WITH_SEP )); then
+  SEP_PATH="$(path_for RestoreSEP)"
+  [[ -n "$SEP_PATH" ]] || die "BuildManifest has no RestoreSEP path for $PRODUCT $VERSION $BUILD"
+  fetch_member RestoreSEP
+fi
 
 if [[ -z "$IM4M" ]]; then
   case "${CPID,,}" in
