@@ -350,6 +350,17 @@ if not data:
 out.write_bytes(data)
 PY
   [[ -s "$out" ]] || die "empty extracted payload: $out"
+
+  # Patchfinders operate on Mach-O images. If the IM4P payload is still
+  # encrypted/compressed, fail before patching instead of reporting 0 targets.
+  "$PY" - "$out" <<'PY'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1])
+d=p.read_bytes()[:4]
+if d not in (b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf"):
+    raise SystemExit(f"extracted payload is not Mach-O: {p} magic={d.hex()}")
+PY
 }
 
 extract_raw "$WORK/iBEC.im4p" "$WORK/iBEC.raw"
