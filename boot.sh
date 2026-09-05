@@ -95,6 +95,21 @@ show_state "AFTER iBEC GO"
 log "Setting display debug background"
 irecovery -c "bgcolor 0 0 0" || true
 
+# Show the project boot logo while the kernel/ramdisk is being prepared.
+# build.sh normally embeds it as bootchain/logo.img4; if an older bootchain
+# lacks it, regenerate it directly from the repository-root logo.jpg.
+if [[ ! -s "$BOOT/logo.img4" && -f "$ROOT/logo.jpg" ]]; then
+  log "Building missing boot logo from logo.jpg"
+  "$ROOT/scripts/make_logo.sh" "$ROOT/logo.jpg" --out "$BOOT/logo.img4"
+fi
+if [[ -s "$BOOT/logo.img4" ]]; then
+  log "Showing project boot logo"
+  irecovery -f "$BOOT/logo.img4"
+  irecovery -c "setpicture 1" || irecovery -c setpicture || true
+  sleep "${BUNNY_LOGO_HOLD_SECS:-2}"
+  irecovery -c "bgcolor 0 0 0" || true
+fi
+
 send_fw() {
   local key="$1" f="$BOOT/$1.img4"
   [[ -s "$f" ]] || return 0
