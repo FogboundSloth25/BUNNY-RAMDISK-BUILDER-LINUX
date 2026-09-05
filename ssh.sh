@@ -14,7 +14,22 @@ USBMUXD_PRIVATE_STARTED=0
 
 cleanup_usbmuxd() {
   local rc=$?
+  local old_pid=""
   trap - EXIT INT TERM HUP
+
+  # iproxy is a separate client process. Clean it up too; otherwise an old
+  # 2222:44 instance can survive and keep requesting device port 44.
+  if [[ -n "${IPROXY_PID:-}" ]]; then
+    kill "$IPROXY_PID" 2>/dev/null || true
+    wait "$IPROXY_PID" 2>/dev/null || true
+  fi
+  if [[ -f "$ROOT/.iproxy.pid" ]]; then
+    old_pid="$(<"$ROOT/.iproxy.pid")"
+    if [[ "$old_pid" =~ ^[0-9]+$ ]]; then
+      kill "$old_pid" 2>/dev/null || true
+    fi
+    rm -f "$ROOT/.iproxy.pid"
+  fi
 
   if (( USBMUXD_PRIVATE_STARTED )); then
     sudo pkill -TERM -x usbmuxd 2>/dev/null || true
@@ -109,6 +124,12 @@ LOCAL_PORT="${BUNNY_SSH_LOCAL_PORT:-2222}"
 DEVICE_PORT="${BUNNY_SSH_DEVICE_PORT:-22}"
 USER_NAME="${BUNNY_SSH_USER:-root}"
 PASSWORD="${BUNNY_SSH_PASSWORD:-alpine}"
+# Stop any stale helper from the old device-port-44 configuration.
+if pgrep -f "iproxy .*${LOCAL_PORT}([ :])44([[:space:]]|$)" >/dev/null 2>&1; then
+  log "Stopping stale iproxy using device port 44"
+  pkill -f "iproxy .*${LOCAL_PORT}([ :])44([[:space:]]|$)" 2>/dev/null || true
+  sleep 0.2
+fi
 
 pattern="iproxy .*${LOCAL_PORT} .*${DEVICE_PORT}"
 if ! pgrep -f "$pattern" >/dev/null 2>&1; then
