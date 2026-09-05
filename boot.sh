@@ -92,8 +92,10 @@ irecovery -c go
 wait_device 8000 || die "iPhone did not reappear after iBEC"
 show_state "AFTER iBEC GO"
 
+log "Setting display debug background"
+irecovery -c "bgcolor 0 127 127" || true
 log "Setting boot args"
-irecovery -c "setenv boot-args rd=md0 -v serial=3 debug=0x2014e wdt=-1"
+irecovery -c "setenvnp boot-args rd=md0 -v serial=3 debug=0x2014e wdt=-1"
 irecovery -c "setenv auto-boot false"
 
 echo "==> Boot arguments currently visible to iBoot"
