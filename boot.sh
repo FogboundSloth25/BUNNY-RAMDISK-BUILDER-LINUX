@@ -34,7 +34,6 @@ if [[ -f "$BOOT/iBSS.patched.raw" ]]; then
   log "Loading patched iBSS"
   usbliter8ctl boot "$BOOT/iBSS.patched.raw"
   wait_device 5000 || die "iPhone did not reappear after iBSS"
-elog=""; true
 else
   die "missing iBSS.patched.raw in bootchain; rebuild with iBSS enabled"
 fi
