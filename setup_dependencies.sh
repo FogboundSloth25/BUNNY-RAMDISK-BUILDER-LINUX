@@ -177,7 +177,31 @@ if [[ ! -d "$IBOOTIM_SRC/.git" ]]; then
   rm -rf "$IBOOTIM_SRC"
   git clone --depth 1 https://github.com/realnp/ibootim.git "$IBOOTIM_SRC"
 fi
-make -C "$IBOOTIM_SRC" CFLAGS="${CFLAGS:-} -DEFTYPE=EINVAL" -j"$(nproc)"
+cat > "$IBOOTIM_SRC/Makefile" <<'EOF'
+CC ?= gcc
+CFLAGS ?= -O2
+CPPFLAGS ?=
+LDFLAGS ?=
+LDLIBS ?= -lpng
+
+all: ibootim
+
+ibootim: ibootim.c lzss.c main.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DEFTYPE=EINVAL $^ $(LDFLAGS) $(LDLIBS) -o $@
+
+clean:
+	rm -f ibootim
+
+.PHONY: all clean
+EOF
+
+make -C "$IBOOTIM_SRC" clean >/dev/null 2>&1 || true
+make -C "$IBOOTIM_SRC" CC="${CC:-gcc}" CFLAGS="-O2 -Wall -Wextra ${CFLAGS:-}" -j"$(nproc)"
+[[ -x "$IBOOTIM_SRC/ibootim" ]] || die "ibootim build finished without executable"
+"$IBOOTIM_SRC/ibootim" --help 2>&1 | grep -q "Converts PNGs to iBoot Embedded Images" ||
+  die "ibootim self-test failed"
+install -m 0755 "$IBOOTIM_SRC/ibootim" "$BUNNY_TOOLS/ibootim"
+echo "ibootim ready: $BUNNY_TOOLS/ibootim"
 [[ -x "$IBOOTIM_SRC/ibootim" ]] || die "ibootim build finished without executable"
 install -m 0755 "$IBOOTIM_SRC/ibootim" "$BUNNY_TOOLS/ibootim"
 "$BUNNY_TOOLS/ibootim" --help >/dev/null 2>&1 || true
