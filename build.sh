@@ -453,6 +453,16 @@ PY
 for key in iBEC KernelCache DeviceTree RestoreTrustCache; do
   cp "$CACHE/$(basename "$(path_for "$key")")" "$WORK/$key.im4p"
 done
+
+# RestoreSEP is fetched into the per-firmware cache above. Stage the exact
+# cached member into WORK before packaging; otherwise the later packager
+# cannot see it after WORK is recreated.
+if (( WITH_SEP )); then
+  SEP_CACHE="$CACHE/$(basename "$(path_for RestoreSEP)")"
+  [[ -s "$SEP_CACHE" ]] || die "RestoreSEP cache member is missing: $SEP_CACHE"
+  cp "$SEP_CACHE" "$WORK/RestoreSEP.im4p"
+  [[ -s "$WORK/RestoreSEP.im4p" ]] || die "failed to stage RestoreSEP into WORK"
+fi
 RESTORE_RAMDISK_SRC="$CACHE/$(basename "$(path_for RestoreRamDisk)")"
 [[ -s "$RESTORE_RAMDISK_SRC" ]] || die "RestoreRamDisk payload missing: $RESTORE_RAMDISK_SRC"
 log "Extracting RestoreRamDisk IM4P payload"
