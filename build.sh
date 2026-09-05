@@ -289,7 +289,16 @@ PY
 for key in iBEC KernelCache DeviceTree RestoreRamDisk RestoreTrustCache; do
   fetch_member "$key"
 done
-(( USE_IBSS )) && fetch_member iBSS
+if (( USE_IBSS )); then
+  IBSS_PATH="$(path_for iBSS)"
+  IBEC_PATH="$(path_for iBEC)"
+  [[ -n "$IBSS_PATH" && -n "$IBEC_PATH" ]] || die "BuildManifest is missing iBSS/iBEC paths"
+  echo "iBSS path: $IBSS_PATH"
+  echo "iBEC path: $IBEC_PATH"
+  [[ "$IBSS_PATH" != "$IBEC_PATH" ]] || die "BuildManifest selected the same path for iBSS and iBEC"
+  [[ "$(basename "$IBSS_PATH")" != "$(basename "$IBEC_PATH")" ]] || die "iBSS/iBEC archive member names collide"
+  fetch_member iBSS
+fi
 if (( WITH_FW )); then
   for key in AOP ANE AVE ISP GFX SIO; do fetch_member "$key" || true; done
 fi
@@ -375,11 +384,20 @@ extract_raw "$WORK/iBEC.im4p" "$WORK/iBEC.raw"
 extract_raw "$WORK/KernelCache.im4p" "$WORK/kernelcache.raw"
 (( USE_IBSS )) && extract_raw "$WORK/iBSS.im4p" "$WORK/iBSS.raw"
 if (( USE_IBSS )); then
+  iBSS_SIZE="$(stat -c %s "$WORK/iBSS.raw")"
+  iBEC_SIZE="$(stat -c %s "$WORK/iBEC.raw")"
   iBSS_HASH="$(sha256sum "$WORK/iBSS.raw" | awk '{print $1}')"
   iBEC_HASH="$(sha256sum "$WORK/iBEC.raw" | awk '{print $1}')"
-  echo "iBSS SHA256: $iBSS_HASH"
-  echo "iBEC SHA256: $iBEC_HASH"
-  [[ "$iBSS_HASH" != "$iBEC_HASH" ]] || die "iBSS and iBEC payloads are identical; refusing ambiguous bootchain"
+  echo "iBSS raw: $iBSS_SIZE bytes $iBSS_HASH"
+  echo "iBEC raw: $iBEC_SIZE bytes $iBEC_HASH"
+  [[ "$iBSS_HASH" != "$iBEC_HASH" ]] || {
+    echo "[x] iBSS and iBEC extracted payloads are identical." >&2
+    echo "    iBSS source: $IBSS_PATH" >&2
+    echo "    iBEC source: $IBEC_PATH" >&2
+    echo "    cached iBSS: $CACHE/$(basename "$IBSS_PATH")" >&2
+    echo "    cached iBEC: $CACHE/$(basename "$IBEC_PATH")" >&2
+    die "refusing ambiguous bootchain"
+  }
 fi
 [[ -f "$WORK/SPTM.im4p" ]] && extract_raw "$WORK/SPTM.im4p" "$WORK/SPTM.raw"
 [[ -f "$WORK/TXM.im4p" ]] && extract_raw "$WORK/TXM.im4p" "$WORK/TXM.raw"
