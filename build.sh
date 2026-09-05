@@ -310,21 +310,6 @@ BOOT="$BUNNY_BOOTCHAIN/$MODEL-$VERSION-$BUILD-ramdisk"
 rm -rf "$WORK" "$BOOT"
 mkdir -p "$WORK" "$BOOT"
 
-for key in iBEC KernelCache DeviceTree RestoreTrustCache; do
-  cp "$CACHE/$(basename "$(path_for "$key")")" "$WORK/$key.im4p"
-done
-RESTORE_RAMDISK_SRC="$CACHE/$(basename "$(path_for RestoreRamDisk)")"
-[[ -s "$RESTORE_RAMDISK_SRC" ]] || die "RestoreRamDisk payload missing: $RESTORE_RAMDISK_SRC"
-log "Extracting RestoreRamDisk IM4P payload"
-extract_raw "$RESTORE_RAMDISK_SRC" "$WORK/RestoreRamDisk.dmg"
-[[ -s "$WORK/RestoreRamDisk.dmg" ]] || die "RestoreRamDisk payload extraction failed"
-(( USE_IBSS )) && cp "$CACHE/$(basename "$(path_for iBSS)")" "$WORK/iBSS.im4p"
-
-for key in AOP ANE AVE ISP GFX SIO SPTM TXM; do
-  p="$(path_for "$key")"
-  [[ -n "$p" ]] && cp "$CACHE/$(basename "$p")" "$WORK/$key.im4p"
-done
-
 extract_raw() {
   local in="$1" out="$2"
   rm -f "$out"
@@ -370,6 +355,21 @@ PY
   # a Mach-O container. The first word may therefore be an ARM64 instruction
   # (for example 0x90000000 = ADRP X0, #0) rather than a Mach-O magic.
 }
+
+for key in iBEC KernelCache DeviceTree RestoreTrustCache; do
+  cp "$CACHE/$(basename "$(path_for "$key")")" "$WORK/$key.im4p"
+done
+RESTORE_RAMDISK_SRC="$CACHE/$(basename "$(path_for RestoreRamDisk)")"
+[[ -s "$RESTORE_RAMDISK_SRC" ]] || die "RestoreRamDisk payload missing: $RESTORE_RAMDISK_SRC"
+log "Extracting RestoreRamDisk IM4P payload"
+extract_raw "$RESTORE_RAMDISK_SRC" "$WORK/RestoreRamDisk.dmg"
+[[ -s "$WORK/RestoreRamDisk.dmg" ]] || die "RestoreRamDisk payload extraction failed"
+(( USE_IBSS )) && cp "$CACHE/$(basename "$(path_for iBSS)")" "$WORK/iBSS.im4p"
+
+for key in AOP ANE AVE ISP GFX SIO SPTM TXM; do
+  p="$(path_for "$key")"
+  [[ -n "$p" ]] && cp "$CACHE/$(basename "$p")" "$WORK/$key.im4p"
+done
 
 extract_raw "$WORK/iBEC.im4p" "$WORK/iBEC.raw"
 extract_raw "$WORK/KernelCache.im4p" "$WORK/kernelcache.raw"
