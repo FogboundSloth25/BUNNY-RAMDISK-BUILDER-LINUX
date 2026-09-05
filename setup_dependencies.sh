@@ -105,6 +105,13 @@ fi
 log "Building experimental Linux APFS driver"
 APFS_SRC="$BUNNY_THIRD_PARTY/linux-apfs-rw"
 [[ -d "$APFS_SRC" ]] || git clone --depth 1 https://github.com/linux-apfs/linux-apfs-rw.git "$APFS_SRC"
+
+# Upstream Makefile passes M=$(PWD) unquoted to the kernel build. That breaks
+# when the project path contains spaces (for example ~/iPhone XS/...).
+if grep -q '^\s*make -C \$(KERNEL_DIR) M=\$(PWD)' "$APFS_SRC/Makefile"; then
+  sed -i 's#make -C \$(KERNEL_DIR) M=\$(PWD)#make -C "$(KERNEL_DIR)" M="$(PWD)"#' "$APFS_SRC/Makefile"
+fi
+
 if [[ ! -f "$APFS_SRC/apfs.ko" ]]; then
   make -C "$APFS_SRC"
 fi
