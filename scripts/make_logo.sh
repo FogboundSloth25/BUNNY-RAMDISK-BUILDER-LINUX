@@ -118,7 +118,7 @@ def lum(px):
 
 bg = statistics.median(lum(px) for px in border) if border else 0
 gray = im.convert("L")
-mode = os.environ.get("BUNNY_LOGO_INVERT", "auto").lower() if "os" in globals() else "auto"
+mode = os.environ.get("BUNNY_LOGO_INVERT", "auto").lower()
 if mode not in {"auto", "light", "dark", "1", "0"}:
     raise SystemExit("BUNNY_LOGO_INVERT must be auto, light, dark, 1, or 0")
 invert = (bg >= 128) if mode == "auto" else mode in {"light", "1"}
