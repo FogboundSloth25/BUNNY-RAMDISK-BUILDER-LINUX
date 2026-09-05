@@ -15,7 +15,7 @@ fi
 
 echo
 echo "=== tools ==="
-for c in python3 ipsw irecovery iproxy trustcache mkapfs jq curl ssh; do
+for c in python3 ipsw irecovery iproxy usbliter8ctl trustcache mkapfs jq curl ssh; do
   if command -v "$c" >/dev/null 2>&1; then
     printf '  %-12s OK\n' "$c"
   else
