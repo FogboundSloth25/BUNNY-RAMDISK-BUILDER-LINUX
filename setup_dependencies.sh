@@ -107,22 +107,7 @@ APFS_SRC="$BUNNY_THIRD_PARTY/linux-apfs-rw"
 
 KDIR="/lib/modules/$(uname -r)/build"
 [[ -d "$KDIR" ]] || die "Kernel build directory missing: $KDIR"
-
-# Kbuild rejects spaces in KBUILD_EXTMOD. Build the upstream module in a
-# no-space staging path, then copy the resulting module back to the checkout.
-APFS_BUILD="$BUNNY_WORK/linux-apfs-rw-build"
-rm -rf "$APFS_BUILD"
-mkdir -p "$APFS_BUILD"
-rsync -a --exclude='.git' "$APFS_SRC/" "$APFS_BUILD/"
-
-(
-  cd "$APFS_BUILD"
-  printf '#define GIT_COMMIT\t"linux-port"\n' > version.h
-  make -C "$KDIR" M="$APFS_BUILD"
-)
-
-[[ -f "$APFS_BUILD/apfs.ko" ]] || die "linux-apfs-rw build finished without apfs.ko"
-cp "$APFS_BUILD/apfs.ko" "$APFS_SRC/apfs.ko"
+"$ROOT/scripts/build_apfs_module.sh" "$APFS_SRC" "$APFS_SRC/apfs.ko"
 
 log "Building mkapfs"
 APFSPROGS="$BUNNY_THIRD_PARTY/apfsprogs"
