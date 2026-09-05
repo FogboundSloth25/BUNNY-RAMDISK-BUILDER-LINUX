@@ -18,6 +18,7 @@ options:
   --use-ibss                   patch/stage iBSS
   --no-ssh                     keep stock RestoreRamDisk
   --no-fw                      do not stage coprocessor firmware
+  --no-sep                     do not stage RestoreSEP
   --dry-run                    validate manifest only
 EOF
 }
@@ -31,6 +32,7 @@ IM4M=""
 KERNEL_MODE="patched"
 USE_IBSS=1
 WITH_FW=1
+WITH_SEP=1
 INJECT_SSH=1
 DRY_RUN=0
 
@@ -45,7 +47,8 @@ case "$1" in
   --kernel) (($# >= 2)) || die "--kernel needs a value"; KERNEL_MODE="$2"; shift 2 ;;
   --use-ibss) USE_IBSS=1; shift ;;
   --no-ssh) INJECT_SSH=0; shift ;;
-  --no-fw) WITH_FW=0; shift ;;\n  --no-sep) WITH_SEP=0; shift ;;
+  --no-fw) WITH_FW=0; shift ;;
+  --no-sep) WITH_SEP=0; shift ;;
   --dry-run) DRY_RUN=1; shift ;;
   -h|--help) usage; exit 0 ;;
   *) usage >&2; die "unknown option: $1" ;;
