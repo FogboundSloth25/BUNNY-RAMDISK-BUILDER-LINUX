@@ -429,19 +429,26 @@ if (( USE_IBSS )); then
   iBEC_SIZE="$(stat -c %s "$WORK/iBEC.raw")"
   iBSS_HASH="$(sha256sum "$WORK/iBSS.raw" | awk '{print $1}')"
   iBEC_HASH="$(sha256sum "$WORK/iBEC.raw" | awk '{print $1}')"
+  iBSS_IM4P_HASH="$(sha256sum "$WORK/iBSS.im4p" | awk '{print $1}')"
+  iBEC_IM4P_HASH="$(sha256sum "$WORK/iBEC.im4p" | awk '{print $1}')"
   echo "iBSS source: $IBSS_PATH"
   echo "iBEC source: $IBEC_PATH"
+  echo "iBSS IM4P: $iBSS_IM4P_HASH"
+  echo "iBEC IM4P: $iBEC_IM4P_HASH"
   echo "iBSS raw: $iBSS_SIZE bytes $iBSS_HASH"
   echo "iBEC raw: $iBEC_SIZE bytes $iBEC_HASH"
+
   [[ "$IBSS_PATH" == Firmware/dfu/iBSS.*.RELEASE.im4p ]] ||
-    echo "warning: unexpected iBSS manifest path: $IBSS_PATH" >&2
+    die "unexpected iBSS manifest path: $IBSS_PATH"
   [[ "$IBEC_PATH" == Firmware/dfu/iBEC.*.RELEASE.im4p ]] ||
     die "unexpected iBEC manifest path: $IBEC_PATH"
-  [[ "$iBSS_HASH" != "$iBEC_HASH" ]] || {
-    echo "[x] iBSS and iBEC payloads are identical." >&2
-    echo "    refusing to build Option-B bootchain"
-    die "invalid iBSS/iBEC pair"
-  }
+  [[ "$IBSS_PATH" != "$IBEC_PATH" ]] ||
+    die "BuildManifest points iBSS and iBEC at the same IM4P member"
+  [[ "$iBSS_IM4P_HASH" != "$iBEC_IM4P_HASH" ]] ||
+    die "iBSS and iBEC IM4P containers are identical"
+  if [[ "$iBSS_HASH" == "$iBEC_HASH" ]]; then
+    echo "==> iBSS/iBEC share the same decompressed iBoot payload; keeping both containers and patching each mode separately"
+  fi
 fi
 [[ -f "$WORK/SPTM.im4p" ]] && extract_raw "$WORK/SPTM.im4p" "$WORK/SPTM.raw"
 [[ -f "$WORK/TXM.im4p" ]] && extract_raw "$WORK/TXM.im4p" "$WORK/TXM.raw"
