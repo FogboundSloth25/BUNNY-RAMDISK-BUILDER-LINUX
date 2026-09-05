@@ -71,7 +71,6 @@ wait_mode() {
   return 1
 }
 
-require_file "$BOOT/iBSS.patched.raw"
 require_file "$BOOT/iBEC.patched.img4"
 require_file "$BOOT/devicetree.img4"
 require_file "$BOOT/trustcache.img4"
@@ -91,11 +90,15 @@ while (($#)); do
   esac
 done
 
-log "Loading patched iBSS"
-show_state "BEFORE iBSS"
-usbliter8ctl boot "$BOOT/iBSS.patched.raw"
-wait_mode Recovery 120 || die "iPhone did not enter USB Recovery after iBSS"
-show_state "AFTER iBSS"
+if [[ -s "$BOOT/iBSS.patched.raw" ]]; then
+  log "Loading patched iBSS (explicit --use-ibss bootchain)"
+  show_state "BEFORE iBSS"
+  usbliter8ctl boot "$BOOT/iBSS.patched.raw"
+  wait_mode Recovery 120 || die "iPhone did not enter USB Recovery after iBSS"
+  show_state "AFTER iBSS"
+else
+  log "Using direct patched iBEC path"
+fi
 
 log "Sending patched iBEC"
 irecovery -f "$BOOT/iBEC.patched.img4"
@@ -120,11 +123,10 @@ if (( USE_LOGO )); then
   log "Showing project boot logo"
   echo "    logo: $BOOT/logo.img4 ($(stat -c %s "$BOOT/logo.img4") bytes)"
   irecovery -f "$BOOT/logo.img4"
-  # Standard RestoreLogo flow uses setpicture 4. Keep legacy indices only as fallbacks.
-  if irecovery -c "setpicture 4" || irecovery -c "setpicture 1" || irecovery -c "setpicture 0" || irecovery -c "setpicture"; then
+  # Recovery/iBoot boot-logo flow uses picture slot 1 here. Slot 4 belongs to
+  # the DFU restore path and is not the slot used by the ICH ramdisk flow.
+  if irecovery -c "setpicture 1" || irecovery -c "setpicture" || irecovery -c "setpicture 0"; then
     echo "==> setpicture accepted"
-    # setpicture selects the uploaded image; bgcolor forces iBoot to refresh the LCD.
-    irecovery -c "bgcolor 0 0 0" || die "logo selected but bgcolor refresh failed"
     sleep "${BUNNY_LOGO_HOLD_SECS:-3}"
   else
     echo "[!] all setpicture variants failed; continuing without logo" >&2
@@ -144,11 +146,9 @@ send_fw() {
 # Match the proven iBSS/Option-B sequence used by ICH/BUNNY:
 # SPTM/TXM (when present) -> DeviceTree -> TrustCache -> RestoreRamDisk
 # -> coprocessor firmware -> kernel -> setenvnp boot-args -> bootx.
-if [[ -f "$BOOT/sptm.img4" ]]; then
-  send_fw "sptm"
-fi
-if [[ -f "$BOOT/txm.img4" ]]; then
-  send_fw "txm"
+if [[ ! -s "$BOOT/iBSS.patched.raw" ]]; then
+  [[ -f "$BOOT/sptm.img4" ]] && send_fw "sptm"
+  [[ -f "$BOOT/txm.img4" ]] && send_fw "txm"
 fi
 
 if (( USE_SEP < 0 )); then
@@ -176,13 +176,17 @@ show_state "AFTER TRUSTCACHE"
 
 log "Sending RestoreRamDisk"
 irecovery -f "$BOOT/ramdisk.img4"
+# The Option-B path needs a short settling period before the remaining USB
+# coprocessor firmware is accepted by iBoot.
+if [[ -s "$BOOT/iBSS.patched.raw" ]]; then sleep 2; fi
 irecovery -c ramdisk
 show_state "AFTER RAMDISK"
 
-# With iBSS/Option-B, firmware is loaded after the ramdisk and before kernel.
-for key in AOP ANE AVE ISP GFX SIO; do
-  [[ -s "$BOOT/$key.img4" ]] && send_fw "$key"
-done
+if [[ -s "$BOOT/iBSS.patched.raw" ]]; then
+  for key in sptm txm AOP ANE AVE ISP GFX SIO; do
+    [[ -s "$BOOT/$key.img4" ]] && send_fw "$key"
+  done
+fi
 
 log "Sending KernelCache"
 irecovery -f "$BOOT/kernelcache.img4.patched"
