@@ -119,11 +119,7 @@ Defaults:
 - user: `root`
 - password: `alpine`
 
-For a ramdisk using port 44:
-
-```bash
-BUNNY_SSH_DEVICE_PORT=44 ./ssh.sh
-```
+For the ICH A12/A13 SSH ramdisk, `./ssh.sh` uses the bundled `restored_external` payload and connects to Dropbear on device port `22`.
 
 ## Linux APFS backend
 

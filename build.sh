@@ -713,9 +713,9 @@ if (( INJECT_SSH )); then
   [[ -s "$SSH_LIST" ]] || die "SSH payload allowlist is empty"
 
   BUNNY_RESTORED_EXTERNAL="$BUNNY_RESOURCES/restored_external"
-  # Always use the repository-owned entrypoint. Do not retain an old downloaded
-  # script from a previous build: that would make SSH behavior non-reproducible.
-  install -m 0755 "$ROOT/resources/restored_external.sh" "$BUNNY_RESTORED_EXTERNAL"
+  # Use the exact upstream ICH A12/A13 restored_external payload. It is a
+  # Mach-O executable, not a shell script; do not download/replace it.
+  install -m 0755 "$ROOT/resources/ich_restored_external" "$BUNNY_RESTORED_EXTERNAL"
   [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "restored_external is empty"
 
   SSH_STAGE="$WORK/ssh-stage"

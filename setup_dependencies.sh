@@ -142,7 +142,6 @@ install -m 0755 "$APFS_PROGS_STAGE/mkapfs/mkapfs" "$BUNNY_TOOLS/mkapfs"
 download https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/sshtarlist.txt "$BUNNY_RESOURCES/sshtarlist.txt"
 
 download https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/ssh.tar.gz "$BUNNY_RESOURCES/ssh.tar.gz"
-download https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/restored_external "$BUNNY_RESOURCES/restored_external"
 download https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/ich_logo.png "$BUNNY_RESOURCES/ich_logo.png"
 
 
