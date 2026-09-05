@@ -715,7 +715,7 @@ if (( INJECT_SSH )); then
   BUNNY_RESTORED_EXTERNAL="$BUNNY_RESOURCES/restored_external"
   # Use the exact upstream ICH A12/A13 restored_external payload. It is a
   # Mach-O executable, not a shell script; do not download/replace it.
-  install -m 0755 "$ROOT/resources/ich_restored_external" "$BUNNY_RESTORED_EXTERNAL"
+  install -m 0755 "$ROOT/resources/ssh_restored_external" "$BUNNY_RESTORED_EXTERNAL"
   [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "restored_external is empty"
 
   SSH_STAGE="$WORK/ssh-stage"
@@ -732,14 +732,32 @@ if (( INJECT_SSH )); then
     install -m 0755 "$BUNNY_RESTORED_EXTERNAL" "$SSH_STAGE/usr/local/bin/restored_external"
   fi
 
+  # The SSH entrypoint is a shell script, so it must not be passed to the
+  # trustcache tool. The actual Dropbear Mach-O remains in dropbear.orig and
+  # is included by the upstream allowlist.
+  [[ -x "$SSH_STAGE/usr/local/bin/dropbear.orig" ]] ||
+    die "SSH payload is missing dropbear.orig"
   SSH_FILES=()
   SSH_FILE_COUNT=0
   while IFS= read -r entry || [[ -n "$entry" ]]; do
     entry="$(printf '%s\n' "$entry" | sed -E 's/[[:space:]]*#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//')"
     [[ -n "$entry" ]] || continue
     rel="$(printf '%s\n' "$entry" | sed 's#^work/sshtar/##')"
-    SSH_FILES+=("$SSH_STAGE/$rel")
-    SSH_FILE_COUNT=$((SSH_FILE_COUNT + 1))
+    candidate="$SSH_STAGE/$rel"
+    # trustcache accepts code objects, not interpreted text. Detect Mach-O by
+    # its universal/fat or 64-bit little-endian magic before appending.
+    magic=""
+    if [[ -f "$candidate" ]]; then
+      magic="$(od -An -tx1 -N4 "$candidate" | tr -d ' [:space:]')"
+    fi
+    case "$magic" in
+      cffaedfe|cafebabe|bebafeca|feedfacf|cffaedfe)
+        SSH_FILES+=("$candidate")
+        SSH_FILE_COUNT=$((SSH_FILE_COUNT + 1))
+        ;;
+      *)
+        ;;
+    esac
   done < "$SSH_LIST"
 
   (( SSH_FILE_COUNT > 0 )) || die "SSH trustcache allowlist contains no files"
