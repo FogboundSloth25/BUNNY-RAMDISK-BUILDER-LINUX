@@ -11,7 +11,8 @@ DEVICE_PORT="${BUNNY_SSH_DEVICE_PORT:-22}"
 USER_NAME="${BUNNY_SSH_USER:-root}"
 PASSWORD="${BUNNY_SSH_PASSWORD:-alpine}"
 
-if ! pgrep -f "iproxy[[:space:]]+$LOCAL_PORT[[:space:]]+$DEVICE_PORT" >/dev/null 2>&1; then
+pattern="iproxy .*${LOCAL_PORT} .*${DEVICE_PORT}"
+if ! pgrep -f "$pattern" >/dev/null 2>&1; then
   log "Starting iproxy $LOCAL_PORT -> $DEVICE_PORT"
   iproxy "$LOCAL_PORT" "$DEVICE_PORT" >/tmp/bunny-iproxy.log 2>&1 &
   echo $! > "$ROOT/.iproxy.pid"
