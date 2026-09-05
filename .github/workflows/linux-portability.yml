@@ -97,3 +97,30 @@ jobs:
           .ci-venv/bin/pip install --upgrade pip
           .ci-venv/bin/pip install -r requirements.txt
           .ci-venv/bin/python -c 'import capstone, pyimg4, usb; print("Python dependencies OK")'
+
+  img4:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install IMG4 dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libssl-dev liblzfse-dev 2>/dev/null || true
+      - name: Build img4lib
+        run: |
+          set -euo pipefail
+          git clone --recursive --depth 1 https://github.com/xerub/img4lib.git "$RUNNER_TEMP/img4lib"
+          make -C "$RUNNER_TEMP/img4lib" -j"$(nproc)"
+          test -x "$RUNNER_TEMP/img4lib/img4"
+          "$RUNNER_TEMP/img4lib/img4" -h >/tmp/img4-help
+          grep -q -- '-P[f|u]' /tmp/img4-help
+      - name: Validate kernel patch generator
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/kerneldiff.py
+          printf '\x00\x01\x02\x03' > /tmp/original.bin
+          printf '\x00\xff\x02\xfe' > /tmp/patched.bin
+          python3 scripts/kerneldiff.py /tmp/original.bin /tmp/patched.bin /tmp/test.bpatch
+          grep -q '^#AMFI' /tmp/test.bpatch
+          grep -q '^0x1 0x01 0xff$' /tmp/test.bpatch
+          grep -q '^0x3 0x03 0xfe$' /tmp/test.bpatch
