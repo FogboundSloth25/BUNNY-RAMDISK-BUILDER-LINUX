@@ -245,6 +245,15 @@ inject_apfs() {
 
   unmount_image "$src_mp"
   rmdir "$src_mp" 2>/dev/null || true
+
+  # Re-open the image read-only as a final filesystem integrity check.
+  local check_mp="$ROOT/work/apfs-check.$"
+  mkdir -p "$check_mp"
+  mount_image "$out" "$check_mp" ro apfs 0
+  sudo test -d "$check_mp/usr" || die "APFS integrity check failed: /usr is missing"
+  sudo test -d "$check_mp/private" || die "APFS integrity check failed: /private is missing"
+  unmount_image "$check_mp"
+  rmdir "$check_mp" 2>/dev/null || true
 }
 
 inject_hfsplus() {
