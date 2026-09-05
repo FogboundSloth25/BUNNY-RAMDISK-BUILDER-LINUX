@@ -565,11 +565,12 @@ echo "kc.bpatch: $PATCH_COUNT byte patches"
 #
 # Keeping the payload stock is important: embedding the already-patched kernel
 # AND attaching kc.bpatch would apply every modification twice.
-# img4 consumes the original/decrypted kernelcache container here.
-# The raw Mach-O exists only for the patchfinder and kerneldiff stages.
+# img4 consumes the decompressed stock Mach-O here. Passing the compressed
+# IM4P container itself would embed the compression/wrapper bytes as payload
+# and the resulting rkrn artifact would not contain a Mach-O kernel.
 # Upstream Linux SSHRD follows the same model: original kernelcache IM4P
 # + kc.bpatch property + -J, rather than passing the raw Mach-O to img4.
-"$IMG4" -i "$WORK/KernelCache.im4p"   -o "$BOOT/kernelcache.img4.patched"   -M "$IM4M"   -T rkrn   -P "$WORK/kc.bpatch"   -J
+"$IMG4" -i "$WORK/kernelcache.raw"   -o "$BOOT/kernelcache.img4.patched"   -M "$IM4M"   -T rkrn   -P "$WORK/kc.bpatch"
 
 # Validate the exact artifact iBoot will receive: rkrn IM4P + Mach-O payload
 # + a non-empty krnl/bpatch property.
