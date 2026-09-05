@@ -362,20 +362,10 @@ PY
 
   [[ -s "$out" ]] || die "empty extracted payload: $out"
 
-  "$PY" - "$out" <<'PY'
-from pathlib import Path
-import sys
+  # iBoot/iBEC patchfinders consume a raw executable image, not necessarily
+  # a Mach-O container. The first word may therefore be an ARM64 instruction
+  # (for example 0x90000000 = ADRP X0, #0) rather than a Mach-O magic.
 
-p = Path(sys.argv[1])
-magic = p.read_bytes()[:4]
-
-# 64-bit little/big-endian Mach-O.
-if magic not in (b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf"):
-    raise SystemExit(
-        f"extracted payload is not Mach-O: {p} magic={magic.hex()}"
-    )
-PY
-}
 
 extract_raw "$WORK/iBEC.im4p" "$WORK/iBEC.raw"
 extract_raw "$WORK/KernelCache.im4p" "$WORK/kernelcache.raw"
