@@ -3,37 +3,61 @@ set -euo pipefail
 
 ROOT="${BUNNY_ROOT:?BUNNY_ROOT must be set by env.sh}"
 
+# RestoreRamDisk files are disk images.  Do not identify a filesystem by a
+# loose string match: random H+/HX/NXSB bytes inside a DMG can produce a
+# completely bogus offset.  APFS is validated from the NXSB fields instead.
 detect_fs() {
   "$ROOT/.venv/bin/python" - "$1" <<'PY'
 from pathlib import Path
 import mmap
+import struct
 import sys
 
 p = Path(sys.argv[1])
+size = p.stat().st_size
+if size == 0:
+    raise SystemExit("unknown")
 
 with p.open("rb") as f:
-    if p.stat().st_size == 0:
-        raise SystemExit("unknown")
     mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
 
+    # APFS container superblock (NXSB): magic is at +0x20 from the
+    # container/block start.  Validate block size/count as well as alignment
+    # so a random occurrence of "NXSB" cannot become a mount offset.
     pos = mm.find(b"NXSB")
     while pos >= 0:
         start = pos - 0x20
-        if start >= 0 and start % 4096 == 0:
-            print(f"apfs {start}")
-            mm.close()
-            raise SystemExit
-        pos = mm.find(b"NXSB", pos + 1)
-
-    for sig in (b"H+", b"HX"):
-        pos = mm.find(sig)
-        while pos >= 0:
-            start = pos - 1024
-            if start >= 0 and start % 512 == 0:
-                print(f"hfsplus {start}")
+        if start >= 0 and start % 4096 == 0 and start + 0x30 <= size:
+            block_size = struct.unpack_from("<I", mm, start + 0x24)[0]
+            block_count = struct.unpack_from("<Q", mm, start + 0x28)[0]
+            if (
+                block_size in (4096, 8192, 16384, 32768, 65536)
+                and block_count > 0
+                and block_count <= (size - start) // block_size + 1
+            ):
+                print(f"apfs {start}")
                 mm.close()
                 raise SystemExit
-            pos = mm.find(sig, pos + 1)
+        pos = mm.find(b"NXSB", pos + 1)
+
+    # HFS+ is retained only as an explicit legacy fallback.  The build
+    # pipeline sets BUNNY_IOS_VERSION, so modern iOS builds never silently
+    # fall back to HFS+ after a failed APFS probe.
+    allow_hfs = __import__("os").environ.get("BUNNY_ALLOW_HFSPLUS") == "1"
+    if allow_hfs:
+        for sig in (b"H+", b"HX"):
+            pos = mm.find(sig)
+            while pos >= 0:
+                start = pos - 1024
+                if start >= 0 and start % 512 == 0 and start + 1026 <= size:
+                    # HFS+ volume header has signature at offset 1024 and
+                    # version 4 at +1026.
+                    version = struct.unpack_from(">H", mm, start + 1026)[0]
+                    if version == 4:
+                        print(f"hfsplus {start}")
+                        mm.close()
+                        raise SystemExit
+                pos = mm.find(sig, pos + 1)
 
     mm.close()
 
@@ -57,27 +81,52 @@ load_apfs() {
 
 mount_image() {
   local image="$1" mountpoint="$2" mode="$3" fstype="$4" offset="$5"
+  local loopdev=""
 
   mkdir -p "$mountpoint"
 
-  local opts="loop"
-  if [[ "$fstype" == apfs && "$mode" == rw ]]; then
-    opts+=",readwrite"
-  elif [[ "$mode" == ro ]]; then
-    opts+=",ro"
+  # Using mount -o loop,offset relies on util-linux creating the loop device
+  # with exactly the requested offset.  Explicit losetup makes that state
+  # observable and avoids confusing DMG/container offsets with filesystem
+  # offsets.
+  if [[ "$offset" != 0 ]]; then
+    local loop_opts="--find --show"
+    [[ "$mode" == ro ]] && loop_opts+=" --read-only"
+    loopdev="$(sudo losetup $loop_opts --offset "$offset" "$image")"
+  else
+    local loop_opts="--find --show"
+    [[ "$mode" == ro ]] && loop_opts+=" --read-only"
+    loopdev="$(sudo losetup $loop_opts "$image")"
   fi
-  [[ "$offset" != 0 ]] && opts+=",offset=$offset"
 
   if [[ "$fstype" == apfs ]]; then
-    sudo mount -t apfs -o "$opts" "$image" "$mountpoint"
+    if [[ "$mode" == rw ]]; then
+      sudo mount -t apfs -o readwrite "$loopdev" "$mountpoint"
+    else
+      sudo mount -t apfs -o ro "$loopdev" "$mountpoint"
+    fi
   else
-    sudo mount -t hfsplus -o "$opts" "$image" "$mountpoint"
+    if [[ "$mode" == rw ]]; then
+      sudo mount -t hfsplus -o rw "$loopdev" "$mountpoint"
+    else
+      sudo mount -t hfsplus -o ro "$loopdev" "$mountpoint"
+    fi
   fi
+
+  # Store the loop device for cleanup without changing the caller API.
+  printf '%s\n' "$loopdev" > "$mountpoint/.bunny-loopdev"
 }
 
 unmount_image() {
   local mp="$1"
+  local loopdev=""
+  [[ -f "$mp/.bunny-loopdev" ]] && loopdev="$(<"$mp/.bunny-loopdev")"
+
   sudo umount "$mp" 2>/dev/null || true
+  if [[ -n "$loopdev" ]]; then
+    sudo losetup -d "$loopdev" 2>/dev/null || true
+  fi
+  rm -f "$mp/.bunny-loopdev"
 }
 
 inject_apfs() {
@@ -119,6 +168,10 @@ inject_apfs() {
   log "Injecting SSH"
   sudo tar --xattrs --acls --numeric-owner -xpf "$ssh_tar" -C "$dst_mp"
   sync
+
+  # The generated filesystem must be mountable before we call the injection
+  # successful.  The RETURN trap will unmount it after this function returns.
+  [[ -f "$dst_mp/.bunny-loopdev" ]] || die "APFS destination loop device missing"
 }
 
 inject_hfsplus() {
@@ -146,7 +199,7 @@ inject_ssh_ramdisk() {
   detection="$(detect_fs "$stock" 2>/dev/null || true)"
 
   if [[ -z "$detection" || "$detection" == unknown ]]; then
-    echo "[x] Could not detect ramdisk filesystem." >&2
+    echo "[x] Could not validate a supported ramdisk filesystem." >&2
     echo "    file: $(file -b "$stock" 2>/dev/null || echo unavailable)" >&2
     echo "    first bytes:" >&2
     od -An -tx1 -N64 "$stock" >&2 || true
