@@ -62,10 +62,10 @@ PY
 load_apfs() {
   local mod="$BUNNY_THIRD_PARTY/linux-apfs-rw/apfs.ko"
   local kernel vermagic deps signer errlog
-
   kernel="$(uname -r)"
 
   if grep -qw '^apfs ' /proc/modules 2>/dev/null; then
+    echo "==> Linux APFS module already loaded"
     return 0
   fi
 
@@ -83,36 +83,57 @@ load_apfs() {
   echo "    signer:   ${signer:-none}"
 
   if [[ -n "$vermagic" && "$vermagic" != "$kernel"* ]]; then
-    echo "[x] APFS module vermagic does not match running kernel." >&2
-    die "rebuild apfs.ko with the current kernel headers"
+    die "APFS module vermagic does not match running kernel: $vermagic"
   fi
 
-  rm -f /tmp/bunny-apfs-*.err
-  sudo modprobe libcrc32c 2>/tmp/bunny-apfs-libcrc32c.err || true
-  sudo modprobe crc32c 2>/tmp/bunny-apfs-crc32c.err || true
-
-  if sudo modprobe "$mod" 2>/tmp/bunny-apfs-modprobe.err; then
-    grep -qw '^apfs ' /proc/modules && return 0
+  # Load declared dependencies only. No error is raised when an optional
+  # dependency is not present and the module declares no dependency.
+  if [[ -n "$deps" ]]; then
+    tr ',' '\n' <<<"$deps" | while IFS= read -r dep; do
+      [[ -n "$dep" ]] || continue
+      sudo modprobe "$dep"
+    done
   fi
 
   errlog="$(mktemp /tmp/bunny-apfs-load.XXXXXX)"
   if sudo insmod "$mod" 2>"$errlog"; then
     rm -f "$errlog"
-    grep -qw '^apfs ' /proc/modules && return 0
+  else
+    # insmod returns EEXIST when the module is already registered/loaded.
+    # Treat that state as success and verify the actual module state below.
+    if grep -qiE 'File exists|already exists|already loaded' "$errlog"; then
+      echo "==> APFS module is already registered; continuing"
+    else
+      echo "[x] APFS module load failed." >&2
+      cat "$errlog" >&2 || true
+      echo "    kernel log access:" >&2
+      if dmesg >/tmp/bunny-apfs-dmesg.txt 2>&1; then
+        tail -n 40 /tmp/bunny-apfs-dmesg.txt >&2
+        rm -f /tmp/bunny-apfs-dmesg.txt
+      else
+        echo "      dmesg is not readable by this user." >&2
+      fi
+      rm -f "$errlog"
+      die "could not load Linux APFS module for kernel $kernel"
+    fi
+    rm -f "$errlog"
   fi
 
-  echo "[x] APFS module load failed." >&2
-  echo "    insmod:" >&2
-  cat "$errlog" >&2 || true
-  echo "    modprobe libcrc32c:" >&2
-  cat /tmp/bunny-apfs-libcrc32c.err >&2 2>/dev/null || true
-  echo "    modprobe crc32c:" >&2
-  cat /tmp/bunny-apfs-crc32c.err >&2 2>/dev/null || true
-  echo "    kernel log:" >&2
-  dmesg | tail -n 40 >&2 2>/dev/null || true
+  # Confirm that the filesystem type is actually registered, rather than
+  # relying solely on the insmod exit code.
+  if grep -qw '^apfs ' /proc/filesystems 2>/dev/null ||
+     grep -qw '^apfs ' /proc/modules 2>/dev/null; then
+    echo "==> Linux APFS module ready"
+    return 0
+  fi
 
-  rm -f "$errlog" /tmp/bunny-apfs-*.err
-  die "could not load Linux APFS module for kernel $kernel"
+  # Built-in filesystem drivers do not appear in /proc/modules.
+  if grep -qw 'nodev[[:space:]]*apfs' /proc/filesystems 2>/dev/null; then
+    echo "==> Linux APFS filesystem driver is built in"
+    return 0
+  fi
+
+  die "APFS module was not registered after insmod"
 }
 
 mount_image() {
