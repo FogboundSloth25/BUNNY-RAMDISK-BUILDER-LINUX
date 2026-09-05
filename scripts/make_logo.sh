@@ -52,7 +52,7 @@ if white < 100: raise SystemExit("logo contains fewer than 100 visible white pix
 PY
 "$IBOOTIM" "$FULL" "$RAW"
 mkdir -p "$(dirname "$OUT")"
-"$IMG4" -i "$RAW" -o "$OUT" -A -T logo -M "$IM4M"
+"$IMG4" -i "$RAW" -o "$OUT" -A -A -T rlgo -M "$IM4M"
 [ -s "$OUT" ] || die "logo IMG4 was not produced"
 "$PY" - "$OUT" <<'PY'
 import sys
@@ -60,6 +60,6 @@ from pathlib import Path
 from pyimg4 import IMG4
 obj = IMG4(Path(sys.argv[1]).read_bytes())
 if not obj.im4p: raise SystemExit("logo IMG4 has no IM4P")
-if obj.im4p.fourcc != "logo": raise SystemExit("wrong logo fourcc: " + repr(obj.im4p.fourcc))
+if obj.im4p.fourcc != "rlgo": raise SystemExit("wrong logo fourcc: " + repr(obj.im4p.fourcc))
 print("logo IMG4 verified")
 PY
