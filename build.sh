@@ -103,30 +103,35 @@ import json,sys
 sel,raw=sys.argv[1],sys.argv[2]
 for item in json.loads(raw).get("firmwares",[]):
     if item.get("version")==sel or item.get("buildid")==sel:
-        print(item["version"])
-        print(item["buildid"])
-        print(item["url"])
+        print(json.dumps(item))
         raise SystemExit
-raise SystemExit("firmware not found")
+raise SystemExit("firmware not found: "+sel)
 PY
 )"
-    VERSION="$(sed -n '1p' <<<"$MATCH")"
-    BUILD="$(sed -n '2p' <<<"$MATCH")"
-    IPSW_URL="$(sed -n '3p' <<<"$MATCH")"
+    VERSION="$(jq -r '.version' <<<"$MATCH")"
+    BUILD="$(jq -r '.buildid' <<<"$MATCH")"
+    IPSW_URL="$(jq -r '.url' <<<"$MATCH")"
+    IPSW_SHA256="$(jq -r '.sha256sum // .sha256 // empty' <<<"$MATCH")"
+  else
+    MATCH="$(jq -c --arg url "$IPSW_URL" '.firmwares[] | select(.url == $url) | .' <<<"$API_JSON" | head -n1 || true)"
+    VERSION="$(jq -r '.version // "unknown"' <<<"$MATCH")"
+    BUILD="$(jq -r '.buildid // "custom"' <<<"$MATCH")"
+    IPSW_SHA256="$(jq -r '.sha256sum // .sha256 // empty' <<<"$MATCH")"
   fi
+
   [[ -n "$BUILD" ]] || BUILD="custom"
   CACHE_KEY="$PRODUCT-$BUILD"
   MANIFEST="$BUNNY_CACHE/$CACHE_KEY/BuildManifest.plist"
-  mkdir -p "$(dirname "$MANIFEST")"
+  REMOTE_IPSW="$BUNNY_CACHE/$CACHE_KEY/$(basename "${IPSW_URL%%\?*}")"
+
+  download_remote_ipsw "$IPSW_URL" "$REMOTE_IPSW" "$IPSW_SHA256"
+
   if [[ ! -s "$MANIFEST" ]]; then
-    log "Downloading BuildManifest.plist only"
-    ipsw extract --remote "$IPSW_URL" --output "$(dirname "$MANIFEST")" --flat --pattern 'BuildManifest.plist' >/dev/null 2>&1
-    CANDIDATE="$(find "$(dirname "$MANIFEST")" -type f -name BuildManifest.plist | head -1 || true)"
-    [[ -s "$CANDIDATE" ]] || die "ipsw could not obtain BuildManifest.plist"
-    if [[ "$CANDIDATE" != "$MANIFEST" ]]; then
-      cp -f "$CANDIDATE" "$MANIFEST"
-    fi
+    log "Extracting BuildManifest.plist from verified local IPSW"
+    extract_manifest_from_ipsw "$REMOTE_IPSW" "$MANIFEST"
   fi
+
+  LOCAL_REMOTE_IPSW="$REMOTE_IPSW"
 fi
 
 MODEL_MANIFEST="${MODEL^^}"
@@ -158,7 +163,7 @@ mkdir -p "$CACHE"
 path_for() { jq -r --arg key "$1" '.[$key] // empty' <<<"$IDENTITY"; }
 
 fetch_member() {
-  local key="$1" p dst tmpdir candidate pattern base log_file
+  local key="$1" p dst
   p="$(path_for "$key")"
   [[ -n "$p" ]] || return 0
   dst="$CACHE/$(basename "$p")"
@@ -166,6 +171,14 @@ fetch_member() {
   if [[ ! -s "$dst" ]]; then
     if [[ -n "$LOCAL_IPSW" ]]; then
       "$PY" - "$LOCAL_IPSW" "$p" "$dst" <<'PY'
+import sys, zipfile
+from pathlib import Path
+ipsw, name, out = map(Path, sys.argv[1:])
+with zipfile.ZipFile(ipsw) as z:
+    out.write_bytes(z.read(str(name)))
+PY
+    elif [[ -n "$LOCAL_REMOTE_IPSW" ]]; then
+      "$PY" - "$LOCAL_REMOTE_IPSW" "$p" "$dst" <<'PY'
 import sys, zipfile
 from pathlib import Path
 ipsw, name, out = map(Path, sys.argv[1:])
@@ -178,44 +191,13 @@ out.parent.mkdir(parents=True, exist_ok=True)
 out.write_bytes(data)
 PY
     else
-      tmpdir="$(mktemp -d /tmp/bunny-component.XXXXXX)"
-      log_file="$tmpdir/ipsw.log"
-      base="$(basename "$p")"
-      pattern="$(printf '%s' "$p" | sed 's/[][\\.^$*+?(){}|]/\\&/g')$"
-
-      if ! ipsw extract "$IPSW_URL" --remote \
-          --output "$tmpdir" --flat --pattern "$pattern" >"$log_file" 2>&1; then
-        echo "[ipsw] Failed to extract $key using full path regex:" >&2
-        cat "$log_file" >&2 || true
-        rm -rf "$tmpdir"
-        tmpdir="$(mktemp -d /tmp/bunny-component.XXXXXX)"
-        log_file="$tmpdir/ipsw.log"
-        pattern="$(printf '%s' "$base" | sed 's/[][\\.^$*+?(){}|]/\\&/g')$"
-
-        if ! ipsw extract "$IPSW_URL" --remote \
-            --output "$tmpdir" --flat --pattern "$pattern" >"$log_file" 2>&1; then
-          echo "[ipsw] Basename fallback also failed for $key:" >&2
-          cat "$log_file" >&2 || true
-          rm -rf "$tmpdir"
-          die "ipsw could not fetch $key ($p)"
-        fi
-      fi
-
-      candidate="$(find "$tmpdir" -type f -name "$base" -print -quit)"
-      [[ -s "$candidate" ]] || {
-        echo "[ipsw] Extraction completed but produced no file named $base" >&2
-        cat "$log_file" >&2 || true
-        rm -rf "$tmpdir"
-        die "remote IPSW extraction produced no $key ($base)"
-      }
-
-      cp -f "$candidate" "$dst"
-      rm -rf "$tmpdir"
+      die "no local IPSW available for $key"
     fi
   fi
 
   [[ -s "$dst" ]] || die "component $key is missing/empty: $dst"
 }
+
 for key in iBEC KernelCache DeviceTree RestoreRamDisk RestoreTrustCache; do
   fetch_member "$key"
 done
