@@ -320,8 +320,34 @@ inject_apfs() {
   prepare_ssh_tree "$ssh_tar" "$BUNNY_RESOURCES/sshtarlist.txt" "$ssh_stage"
   verify_ssh_allowlist "$ssh_stage" "$ssh_list"
 
-  sudo cp -a "$ssh_stage/." "$src_mp/" ||
-    { rm -rf "$ssh_stage"; die "SSH payload injection failed while copying into APFS"; }
+  # Replace files one-by-one. The linux-apfs-rw writer is experimental and
+  # does not reliably implement in-place truncate/overwrite; removing an
+  # existing inode first also frees its blocks before the new inode is created.
+  local entry rel src_file dst mode target
+  while IFS= read -r entry || [[ -n "$entry" ]]; do
+    entry="$(printf "%s\n" "$entry" | sed -E "s/[[:space:]]*#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//")"
+    [[ -n "$entry" ]] || continue
+    case "$entry" in
+      work/sshtar/*) rel="$(printf "%s\n" "$entry" | sed "s#^work/sshtar/##")" ;;
+      *) rel="$entry" ;;
+    esac
+    src_file="$ssh_stage/$rel"
+    dst="$src_mp/$rel"
+    [[ -f "$src_file" || -L "$src_file" ]] || die "staged SSH file missing: $rel"
+
+    if [[ -e "$dst" || -L "$dst" ]]; then
+      sudo rm -f -- "$dst" || die "APFS cannot remove existing SSH path: $rel"
+    fi
+    sudo mkdir -p -- "$(dirname "$dst")" || die "cannot create APFS parent: $rel"
+
+    if [[ -L "$src_file" ]]; then
+      target="$(readlink "$src_file")"
+      sudo ln -s -- "$target" "$dst" || die "cannot create APFS symlink: $rel"
+    else
+      mode="$(stat -c "%a" "$src_file")"
+      sudo install -m "$mode" "$src_file" "$dst" || die "cannot create APFS file: $rel"
+    fi
+  done < "$ssh_list"
   rm -rf "$ssh_stage"
 
   if [[ -n "${BUNNY_RESTORED_EXTERNAL:-}" && -s "$BUNNY_RESTORED_EXTERNAL" ]]; then
