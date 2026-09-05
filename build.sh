@@ -596,10 +596,17 @@ echo "kc.bpatch: $PATCH_COUNT byte patches"
 # and the resulting rkrn artifact would not contain a Mach-O kernel.
 # Upstream Linux SSHRD follows the same model: original kernelcache IM4P
 # + kc.bpatch property + -J, rather than passing the raw Mach-O to img4.
-"$IMG4" -i "$WORK/kernelcache.dec"   -o "$BOOT/kernelcache.img4.patched"   -M "$IM4M"   -T rkrn   -P "$WORK/kc.bpatch"
+"$IMG4" -i "$WORK/kernelcache.dec" \
+  -o "$BOOT/kernelcache.img4.patched" \
+  -M "$IM4M" \
+  -T rkrn \
+  -P "$WORK/kc.bpatch"
 
-# Validate the exact artifact iBoot will receive: rkrn IM4P + Mach-O payload
-# + a non-empty krnl/bpatch property.
+# Validate the exact artifact delivered to iBoot.  -P in img4lib applies
+# the byte-patch file to the IM4P payload; it does NOT create an IMG4/IM4P
+# property literally named "krnl".  The rkrn/krnl distinction is the
+# fourcc/type of the kernel image, while the patch list is applied to its
+# payload.
 "$PY" - "$BOOT/kernelcache.img4.patched" "$WORK/kc.bpatch" <<'PY'
 import sys
 from pathlib import Path
@@ -607,27 +614,60 @@ from pyimg4 import IMG4
 
 img4_path = Path(sys.argv[1])
 patch_path = Path(sys.argv[2])
+
 obj = IMG4(img4_path.read_bytes())
 if not obj.im4p:
     raise SystemExit("kernel IMG4 has no IM4P")
+
 if obj.im4p.fourcc != "rkrn":
-    raise SystemExit(f"kernel IMG4 has wrong fourcc: {obj.im4p.fourcc!r}")
+    raise SystemExit(f"kernel IMG4 has wrong IM4P type: {obj.im4p.fourcc!r}")
 
 payload = obj.im4p.payload
 if payload.compression:
     payload.decompress()
 data = payload.output().data
-if len(data) < 4 or data[:4] not in (bytes.fromhex("cffaedfe"), bytes.fromhex("feedfacf")):
-    raise SystemExit(f"kernel IMG4 payload is not Mach-O: magic={data[:4].hex()}")
 
-props = getattr(obj.im4p, "properties", []) or []
-fourccs = [getattr(p, "fourcc", "") for p in props]
-if "krnl" not in fourccs:
-    raise SystemExit(f"kernel IMG4 has no krnl patch property; properties={fourccs!r}")
-if patch_path.stat().st_size == 0:
-    raise SystemExit("kc.bpatch is empty")
+# arm64 Mach-O magic values.
+if data[:4] not in (bytes.fromhex("cffaedfe"), bytes.fromhex("feedfacf")):
+    raise SystemExit(
+        f"kernel IMG4 payload is not Mach-O: magic={data[:4].hex()}"
+    )
 
-print(f"kernel IMG4 verified: rkrn, stock Mach-O payload={len(data)} bytes, krnl property present")
+# Verify every requested byte patch is present in the final payload.
+checked = 0
+for raw in patch_path.read_text().splitlines():
+    line = raw.split("#", 1)[0].split(";", 1)[0].strip()
+    if not line:
+        continue
+    fields = line.split()
+    if len(fields) < 3:
+        raise SystemExit(f"malformed kc.bpatch line: {raw!r}")
+
+    off = int(fields[0], 0)
+    old = int(fields[1], 0)
+    new = int(fields[2], 0)
+
+    if off >= len(data):
+        raise SystemExit(
+            f"kc.bpatch offset 0x{off:x} exceeds kernel payload "
+            f"size 0x{len(data):x}"
+        )
+
+    got = data[off]
+    if got != new:
+        raise SystemExit(
+            f"kc.bpatch was not applied at 0x{off:x}: "
+            f"got={got:02x}, expected_new={new:02x}, stock_old={old:02x}"
+        )
+    checked += 1
+
+if checked == 0:
+    raise SystemExit("kc.bpatch contains no byte patches")
+
+print(
+    f"kernel IMG4 verified: type=rkrn, Mach-O payload={len(data)} bytes, "
+    f"applied patches={checked}"
+)
 PY
 
 "$IMG4" -i "$WORK/DeviceTree.im4p" -o "$BOOT/devicetree.img4" -M "$IM4M" -T rdtr
