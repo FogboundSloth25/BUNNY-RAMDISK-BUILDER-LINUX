@@ -715,7 +715,7 @@ if (( INJECT_SSH )); then
   BUNNY_RESTORED_EXTERNAL="$BUNNY_RESOURCES/restored_external"
   # Use the exact upstream ICH A12/A13 restored_external payload. It is a
   # Mach-O executable, not a shell script; do not download/replace it.
-  install -m 0755 "$ROOT/resources/ich_restored_external" "$BUNNY_RESTORED_EXTERNAL"
+  install -m 0755 "$ROOT/resources/bunny_restored_external" "$BUNNY_RESTORED_EXTERNAL"
   [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "restored_external is empty"
 
   SSH_STAGE="$WORK/ssh-stage"
