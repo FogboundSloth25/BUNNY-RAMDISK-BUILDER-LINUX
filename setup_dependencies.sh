@@ -139,6 +139,8 @@ MKAPFS_VERSION="$("$APFS_PROGS_STAGE/mkapfs/mkapfs" -v)"
 [[ "$MKAPFS_VERSION" == "mkapfs $APFS_COMMIT" ]] || die "mkapfs version self-test failed: $MKAPFS_VERSION"
 install -m 0755 "$APFS_PROGS_STAGE/mkapfs/mkapfs" "$BUNNY_TOOLS/mkapfs"
 
+download https://raw.githubusercontent.com/Pa7r0n/ICH_A12_plus_Ramdisk/main/resources/sshtarlist.txt "$BUNNY_RESOURCES/sshtarlist.txt"
+
 log "Fetching default A12/A13 IM4M resources"
 download https://raw.githubusercontent.com/strawhatdev01/Strawhat-Ramdisk/main/resources/IM4M_0x8020 "$BUNNY_RESOURCES/IM4M_0x8020"
 download https://raw.githubusercontent.com/strawhatdev01/Strawhat-Ramdisk/main/resources/IM4M_0x8030 "$BUNNY_RESOURCES/IM4M_0x8030"
