@@ -40,3 +40,5 @@ fi
 
 # Linux usbmuxd settings
 BUNNY_USBMUX_AUTOSTART="${BUNNY_USBMUX_AUTOSTART:-1}"
+
+export BUNNY_RC_BOOT="$BUNNY_ROOT/resources/bunny_rc.boot"
