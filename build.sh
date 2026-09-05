@@ -512,6 +512,7 @@ echo "kc.bpatch: $PATCH_COUNT byte patches"
 "$PY" "$ROOT/scripts/img4_package.py" --im4p "$WORK/RestoreTrustCache.im4p" --output "$BOOT/trustcache.img4" --im4m "$IM4M"
 
 if (( WITH_SEP )); then
+  [[ -s "$WORK/RestoreSEP.im4p" ]] || die "RestoreSEP extraction missing: $WORK/RestoreSEP.im4p"
   "$IMG4" -i "$WORK/RestoreSEP.im4p" -o "$BOOT/sep-firmware.img4" -M "$IM4M" -T rsep
   [[ -s "$BOOT/sep-firmware.img4" ]] || die "RestoreSEP packaging failed"
 fi
