@@ -177,7 +177,7 @@ if [[ ! -d "$IBOOTIM_SRC/.git" ]]; then
   rm -rf "$IBOOTIM_SRC"
   git clone --depth 1 https://github.com/realnp/ibootim.git "$IBOOTIM_SRC"
 fi
-make -C "$IBOOTIM_SRC" -j"$(nproc)"
+make -C "$IBOOTIM_SRC" CFLAGS="${CFLAGS:-} -DEFTYPE=EINVAL" -j"$(nproc)"
 [[ -x "$IBOOTIM_SRC/ibootim" ]] || die "ibootim build finished without executable"
 install -m 0755 "$IBOOTIM_SRC/ibootim" "$BUNNY_TOOLS/ibootim"
 "$BUNNY_TOOLS/ibootim" --help >/dev/null 2>&1 || true
