@@ -79,6 +79,18 @@ require_file "$BOOT/ramdisk.img4"
 require_file "$BOOT/kernelcache.img4.patched"
 require_file "$BOOT/chain.info"
 
+USE_SEP="${BUNNY_USE_SEP:-0}"
+USE_LOGO=1
+while (($#)); do
+  case "$1" in
+    --sep) USE_SEP=1; shift ;;
+    --no-sep) USE_SEP=0; shift ;;
+    --no-logo) USE_LOGO=0; shift ;;
+    --logo) USE_LOGO=1; shift ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+
 log "Loading patched iBSS"
 show_state "BEFORE iBSS"
 usbliter8ctl boot "$BOOT/iBSS.patched.raw"
@@ -99,18 +111,24 @@ irecovery -c "bgcolor 0 0 0" || true
 # Show the project boot logo while the kernel/ramdisk is being prepared.
 # build.sh normally embeds it as bootchain/logo.img4; if an older bootchain
 # lacks it, regenerate it directly from the repository-root logo.jpg.
-if [[ ! -s "$BOOT/logo.img4" && -f "$ROOT/logo.jpg" ]]; then
-  log "Building missing boot logo from logo.jpg"
-  "$ROOT/scripts/make_logo.sh" "$ROOT/logo.jpg" --out "$BOOT/logo.img4"
+if (( USE_LOGO )); then
+  if [[ ! -s "$BOOT/logo.img4" && -f "$ROOT/logo.jpg" ]]; then
+    log "Building missing boot logo from logo.jpg"
+    "$BASH" "$ROOT/scripts/make_logo.sh" "$ROOT/logo.jpg" --out "$BOOT/logo.img4"
+  fi
+  require_file "$BOOT/logo.img4"
+  log "Showing project boot logo"
+  echo "    logo: $BOOT/logo.img4 ($(stat -c %s "$BOOT/logo.img4") bytes)"
+  irecovery -f "$BOOT/logo.img4"
+  if irecovery -c "setpicture 1" || irecovery -c "setpicture"; then
+    echo "==> setpicture accepted"
+    sleep "${BUNNY_LOGO_HOLD_SECS:-3}"
+  else
+    echo "[!] setpicture failed; continuing without logo" >&2
+  fi
+else
+  echo "==> Project boot logo disabled (--no-logo)"
 fi
-require_file "$BOOT/logo.img4"
-log "Showing project boot logo"
-echo "    logo: $BOOT/logo.img4 ($(stat -c %s "$BOOT/logo.img4") bytes)"
-irecovery -f "$BOOT/logo.img4"
-if ! irecovery -c "setpicture 1"; then
-  die "setpicture 1 failed after logo upload; refusing to continue without verified boot logo"
-fi
-sleep "${BUNNY_LOGO_HOLD_SECS:-3}"
 
 send_fw() {
   local key="$1" f="$BOOT/$1.img4"
@@ -130,11 +148,14 @@ if [[ -f "$BOOT/txm.img4" ]]; then
   send_fw "txm"
 fi
 
-if [[ -s "$BOOT/sep-firmware.img4" ]]; then
-  log "Sending RestoreSEP"
+if (( USE_SEP )); then
+  require_file "$BOOT/sep-firmware.img4"
+  log "Sending RestoreSEP (explicit --sep)"
   irecovery -f "$BOOT/sep-firmware.img4"
   irecovery -c rsepfirmware
   show_state "AFTER RESTORESEP"
+else
+  echo "==> RestoreSEP skipped (default; use --sep to load it)"
 fi
 
 log "Sending DeviceTree"
@@ -162,10 +183,19 @@ irecovery -f "$BOOT/kernelcache.img4.patched"
 show_state "AFTER KERNELCACHE UPLOAD"
 
 log "Setting boot args"
-BOOTARGS="${BUNNY_BOOTARGS:-rd=md0 -v debug=0x14e serial=3 wdt=-1 keepsyms=1}"
-irecovery -c "setenvnp boot-args $BOOTARGS" || \
+BOOTARGS="${BUNNY_BOOTARGS:-rd=md0 -v debug=0x2014e serial=3 wdt=-1 keepsyms=1}"
+if irecovery -c "setenvnp boot-args $BOOTARGS"; then
+  echo "==> setenvnp accepted"
+else
+  echo "[!] setenvnp failed; trying legacy setenv" >&2
   irecovery -c "setenv boot-args $BOOTARGS"
-# Do not force auto-boot=false here: an explicit bootx is the requested transition.
+fi
+BOOTARGS_READBACK="$(irecovery -c "getenv boot-args" 2>/dev/null || true)"
+echo "    boot-args readback: ${BOOTARGS_READBACK:-<unavailable>}"
+if ! grep -Fq "rd=md0" <<<"$BOOTARGS_READBACK"; then
+  echo "[x] boot-args readback does not contain rd=md0; refusing blind bootx" >&2
+  exit 1
+fi
 
 echo "==> Final boot environment"
 irecovery -q 2>&1 || true
@@ -176,7 +206,7 @@ log "Booting kernel + kc.bpatch"
 irecovery -c bootx
 
 log "Waiting for Recovery USB disconnect after bootx"
-disconnect_wait_ms="${BUNNY_BOOT_DISCONNECT_WAIT_MS:-15000}"
+disconnect_wait_ms="${BUNNY_BOOT_DISCONNECT_WAIT_MS:-8000}"
 elapsed=0
 while (( elapsed < disconnect_wait_ms )); do
   if ! irecovery -q >/dev/null 2>&1; then
@@ -188,8 +218,24 @@ while (( elapsed < disconnect_wait_ms )); do
 done
 
 if (( elapsed >= disconnect_wait_ms )); then
-  echo "[x] Device never left USB Recovery after bootx." >&2
-  echo "    This means the host still sees iBoot Recovery; the kernel/ramdisk did not reach a normal boot state." >&2
+  echo "[!] First bootx did not leave USB Recovery; retrying once after re-reading iBoot state." >&2
+  irecovery -q 2>&1 || true
+  irecovery -c bootx || true
+  elapsed=0
+  while (( elapsed < disconnect_wait_ms )); do
+    if ! irecovery -q >/dev/null 2>&1; then
+      echo "==> Recovery USB disconnected on bootx retry: handoff occurred"
+      break
+    fi
+    sleep 0.1
+    elapsed=$((elapsed + 100))
+  done
+fi
+
+if (( elapsed >= disconnect_wait_ms )); then
+  echo "[x] Device never left USB Recovery after bootx/retry." >&2
+  echo "    iBoot accepted staging commands but did not hand off to the kernel/ramdisk." >&2
+  echo "    Isolation test: rebuild with ./build.sh --kernel stock and run ./boot.sh --no-sep --no-logo." >&2
   irecovery -q 2>&1 || true
   exit 1
 fi
