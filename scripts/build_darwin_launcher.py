@@ -94,7 +94,7 @@ def build(source: Path, output: Path, clang: str, objcopy: str) -> None:
         ).stdout
         relocations = []
         for line in rel.splitlines():
-            m = re.match(r"^([0-9a-f]+)\\s+ARM64_RELOC_(PAGE21|PAGEOFF12)\\s+(\\S+)$", line.strip())
+            m = re.match(r"^([0-9a-f]+)\s+ARM64_RELOC_(PAGE21|PAGEOFF12)\s+(\S+)$", line.strip())
             if m:
                 relocations.append((int(m.group(1), 16), m.group(2), m.group(3)))
 
