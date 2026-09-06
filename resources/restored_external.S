@@ -67,7 +67,7 @@ _start:
     mov x0, #127
     svc #0x80
 
-.section __TEXT,__cstring
+.section __TEXT,__const
 banner:
     .asciz "VALIDITY IS THE BEST\n"
 path:
