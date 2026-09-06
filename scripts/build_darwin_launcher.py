@@ -72,6 +72,16 @@ def parse_macho(path: Path) -> tuple[int, int, int, int, bool]:
         raise SystemExit(f"LC_MAIN entryoff 0x{entryoff:x} outside file")
     return cputype, subtype, filetype, entryoff, found_ios
 
+def verify_source_strings(source: Path) -> None:
+    text = source.read_text(encoding="utf-8")
+    if '.asciz "VALIDITY IS THE BEST\\n"' not in text:
+        raise SystemExit("banner must be emitted as a null-terminated Darwin cstring")
+    if '.asciz "EXECVE FAILED\\n"' not in text:
+        raise SystemExit("exec failure string must be emitted as a null-terminated Darwin cstring")
+    if '.ascii "VALIDITY IS THE BEST\\n"' in text or '.ascii "EXECVE FAILED\\n"' in text:
+        raise SystemExit("non-null-terminated __cstring literal remains")
+    print("Darwin cstring termination check: ✅")
+
 def verify_source_syscalls(source: Path) -> None:
     text = source.read_text(encoding="utf-8")
     required = [
@@ -89,6 +99,7 @@ def verify_source_syscalls(source: Path) -> None:
     print("Darwin syscall ABI source check: 0x20000000 namespace ✅")
 
 def build(source: Path, output: Path, clang: str, linker: str | None) -> None:
+    verify_source_strings(source)
     verify_source_syscalls(source)
     ld = find_ld64(linker)
     flavor = []
