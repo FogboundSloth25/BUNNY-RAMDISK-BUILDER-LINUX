@@ -2,9 +2,8 @@
 .globl _start
 .p2align 2
 _start:
-    // Darwin arm64 syscall: write(2, banner, banner_len)
-    // Darwin arm64 syscall ABI uses 0x20000000 | syscall_number.
-    // 0x02000000 (0x200 << 16) is NOT the Darwin syscall namespace.
+    // Darwin arm64 syscall ABI: x16 = 0x20000000 | syscall number.
+    // write(fd=2, banner, 21)
     movz x16, #4
     movk x16, #0x2000, lsl #16
     mov x0, #2
@@ -13,8 +12,10 @@ _start:
     mov x2, #21
     svc #0x80
 
-    // Build argv on the process stack without any external relocations.
+    // argv = { "/usr/local/bin/dropbear", "-R", "-E", "-F", "-p", "44", NULL }
+    // envp = { NULL }
     sub sp, sp, #64
+
     adrp x9, path@PAGE
     add x9, x9, path@PAGEOFF
     str x9, [sp, #0]
@@ -40,10 +41,9 @@ _start:
     str x9, [sp, #40]
 
     str xzr, [sp, #48]
-    // envp = { NULL } at sp+56.
     str xzr, [sp, #56]
 
-    // Darwin arm64 syscall: execve(path, argv, envp)
+    // Darwin arm64 execve syscall (59).
     movz x16, #0x3b
     movk x16, #0x2000, lsl #16
     adrp x0, path@PAGE
@@ -52,8 +52,7 @@ _start:
     add x2, sp, #56
     svc #0x80
 
-    // execve only returns on error. Print a deterministic diagnostic, then
-    // terminate rather than falling through into restore code.
+    // Only reached when execve failed.
     adrp x1, exec_failed@PAGE
     add x1, x1, exec_failed@PAGEOFF
     mov x0, #2
@@ -62,6 +61,7 @@ _start:
     movk x16, #0x2000, lsl #16
     svc #0x80
 
+    // Darwin arm64 exit syscall (1).
     movz x16, #1
     movk x16, #0x2000, lsl #16
     mov x0, #127
@@ -69,7 +69,8 @@ _start:
 
 .section __TEXT,__cstring
 banner:
-    .ascii "VALIDITY IS THE BEST\n"
+    .ascii "VALIDITY IS THE BEST
+"
 path:
     .asciz "/usr/local/bin/dropbear"
 arg_R:
@@ -83,4 +84,5 @@ arg_p:
 arg_44:
     .asciz "44"
 exec_failed:
-    .ascii "EXECVE FAILED\\n"
+    .ascii "EXECVE FAILED
+"
