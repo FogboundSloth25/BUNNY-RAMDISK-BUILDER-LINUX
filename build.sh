@@ -712,17 +712,37 @@ if (( INJECT_SSH )); then
   fi
   [[ -s "$SSH_LIST" ]] || die "SSH payload allowlist is empty"
 
-  BUNNY_RESTORED_EXTERNAL="$BUNNY_RESOURCES/restored_external"
-  # For the SSH ramdisk this intentionally replaces Apple's restore daemon
-  # with a POSIX restored_external launcher, as used by SSHRD-style ramdisks.
-  # Keep the check semantic: this file must be a shell script, and it is NOT
-  # part of the Mach-O trustcache set.
-  install -m 0755 "$ROOT/resources/ssh_restored_external" "$BUNNY_RESTORED_EXTERNAL"
-  [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "restored_external is empty"
-  head -c 2 "$BUNNY_RESTORED_EXTERNAL" | grep -Fxq "#!" ||
-    die "SSH restored_external must be a POSIX script"
-  echo "SSH restored_external: POSIX launcher (Dropbear :44)"
+  BUNNY_RESTORED_EXTERNAL="$WORK/restored_external"
+  # Build a real Darwin arm64e Mach-O launcher. A POSIX shell script here is
+  # not safe on this XNU boot path because AMFI/code-signing policy applies to
+  # the executable opened by rc.boot.
+  "$PY" "$ROOT/scripts/build_darwin_launcher.py" \
+    --source "$ROOT/resources/restored_external.S" \
+    --output "$BUNNY_RESTORED_EXTERNAL"
+  [[ -x "$BUNNY_RESTORED_EXTERNAL" ]] || die "Darwin restored_external was not built"
 
+  [[ -x "$BUNNY_TOOLS/ldid" ]] || die "missing ldid; run ./setup_dependencies.sh"
+  log "Ad-hoc signing Darwin restored_external"
+  "$BUNNY_TOOLS/ldid" -S "$BUNNY_RESTORED_EXTERNAL"
+  [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "signed restored_external is empty"
+
+  magic="$(od -An -tx1 -N4 "$BUNNY_RESTORED_EXTERNAL" | tr -d " [:space:]")"
+  [[ "$magic" == "cffaedfe" ]] || die "restored_external is not Darwin arm64e Mach-O (magic=$magic)"
+  "$PY" - "$BUNNY_RESTORED_EXTERNAL" <<'PY'
+import sys, struct
+from pathlib import Path
+p = Path(sys.argv[1])
+b = p.read_bytes()
+if len(b) < 32 or b[:4] != bytes.fromhex("cffaedfe"):
+    raise SystemExit("restored_external: invalid Mach-O magic")
+if struct.unpack_from("<I", b, 12)[0] != 2:
+    raise SystemExit("restored_external: not MH_EXECUTE")
+if struct.unpack_from("<I", b, 8)[0] != 0x0100000c:
+    raise SystemExit("restored_external: not arm64")
+if struct.unpack_from("<I", b, 16)[0] < 1:
+    raise SystemExit("restored_external: no load commands")
+print(f"restored_external verified: Darwin arm64e Mach-O, {len(b)} bytes")
+PY
   SSH_STAGE="$WORK/ssh-stage"
   prepare_ssh_tree "$SSH_TAR" "$SSH_LIST" "$SSH_STAGE"
   verify_ssh_allowlist "$SSH_STAGE" "$SSH_LIST"
@@ -764,6 +784,11 @@ if (( INJECT_SSH )); then
         ;;
     esac
   done < "$SSH_LIST"
+
+  # The Darwin restored_external is outside the upstream archive allowlist.
+  # It is code executed by XNU, so its ad-hoc CodeDirectory must be trusted.
+  SSH_FILES+=("$BUNNY_RESTORED_EXTERNAL")
+  SSH_FILE_COUNT=$((SSH_FILE_COUNT + 1))
 
   (( SSH_FILE_COUNT > 0 )) || die "SSH trustcache allowlist contains no files"
   [[ -x "$BUNNY_TOOLS/trustcache" ]] || die "missing trustcache tool; run ./setup_dependencies.sh"
