@@ -3,8 +3,10 @@
 .p2align 2
 _start:
     // Darwin arm64 syscall: write(2, banner, banner_len)
+    // Darwin arm64 syscall ABI uses 0x20000000 | syscall_number.
+    // 0x02000000 (0x200 << 16) is NOT the Darwin syscall namespace.
     movz x16, #4
-    movk x16, #0x200, lsl #16
+    movk x16, #0x2000, lsl #16
     mov x0, #2
     adrp x1, banner@PAGE
     add x1, x1, banner@PAGEOFF
@@ -38,20 +40,30 @@ _start:
     str x9, [sp, #40]
 
     str xzr, [sp, #48]
+    // envp = { NULL } at sp+56.
+    str xzr, [sp, #56]
 
-    // Darwin arm64 syscall: execve(path, argv, envp=NULL)
+    // Darwin arm64 syscall: execve(path, argv, envp)
     movz x16, #0x3b
-    movk x16, #0x200, lsl #16
+    movk x16, #0x2000, lsl #16
     adrp x0, path@PAGE
     add x0, x0, path@PAGEOFF
     mov x1, sp
-    mov x2, xzr
+    add x2, sp, #56
     svc #0x80
 
-    // execve only returns on error. Exit 127 instead of falling back into the
-    // Apple restore daemon, making failure deterministic.
+    // execve only returns on error. Print a deterministic diagnostic, then
+    // terminate rather than falling through into restore code.
+    adrp x1, exec_failed@PAGE
+    add x1, x1, exec_failed@PAGEOFF
+    mov x0, #2
+    mov x2, #14
+    movz x16, #4
+    movk x16, #0x2000, lsl #16
+    svc #0x80
+
     movz x16, #1
-    movk x16, #0x200, lsl #16
+    movk x16, #0x2000, lsl #16
     mov x0, #127
     svc #0x80
 
@@ -70,3 +82,5 @@ arg_p:
     .asciz "-p"
 arg_44:
     .asciz "44"
+exec_failed:
+    .ascii "EXECVE FAILED\\n"
