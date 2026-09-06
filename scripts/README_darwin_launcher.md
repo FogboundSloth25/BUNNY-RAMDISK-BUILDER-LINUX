@@ -1,0 +1,1 @@
+The generated restored_external is a freestanding Darwin arm64e Mach-O. It uses Darwin BSD syscalls directly, prints the VALIDITY banner to stderr, and execve()s /usr/local/bin/dropbear with -R -E -F -p 44. It is built on Linux by clang's Darwin assembler plus a small Mach-O linker/relocation step, then ad-hoc signed with Procursus ldid.
