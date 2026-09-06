@@ -727,7 +727,7 @@ if (( INJECT_SSH )); then
   [[ -s "$BUNNY_RESTORED_EXTERNAL" ]] || die "signed restored_external is empty"
 
   magic="$(od -An -tx1 -N4 "$BUNNY_RESTORED_EXTERNAL" | tr -d " [:space:]")"
-  [[ "$magic" == "cffaedfe" ]] || die "restored_external is not Darwin arm64e Mach-O (magic=$magic)"
+  [[ "$magic" == "cffaedfe" ]] || die "restored_external is not Darwin ARM64 Mach-O (magic=$magic)"
   "$PY" - "$BUNNY_RESTORED_EXTERNAL" <<'PY'
 import sys, struct
 from pathlib import Path
@@ -737,11 +737,11 @@ if len(b) < 32 or b[:4] != bytes.fromhex("cffaedfe"):
     raise SystemExit("restored_external: invalid Mach-O magic")
 if struct.unpack_from("<I", b, 12)[0] != 2:
     raise SystemExit("restored_external: not MH_EXECUTE")
-if struct.unpack_from("<I", b, 8)[0] != 0x0100000c:
+if struct.unpack_from("<I", b, 4)[0] != 0x0100000c:
     raise SystemExit("restored_external: not arm64")
 if struct.unpack_from("<I", b, 16)[0] < 1:
     raise SystemExit("restored_external: no load commands")
-print(f"restored_external verified: Darwin arm64e Mach-O, {len(b)} bytes")
+print(f"restored_external verified: Darwin ARM64 Mach-O, {len(b)} bytes")
 PY
   SSH_STAGE="$WORK/ssh-stage"
   prepare_ssh_tree "$SSH_TAR" "$SSH_LIST" "$SSH_STAGE"
