@@ -69,7 +69,7 @@ _start:
 
 .section __TEXT,__cstring
 banner:
-    .ascii "VALIDITY IS THE BEST\n"
+    .asciz "VALIDITY IS THE BEST\n"
 path:
     .asciz "/usr/local/bin/dropbear"
 arg_R:
@@ -83,4 +83,4 @@ arg_p:
 arg_44:
     .asciz "44"
 exec_failed:
-    .ascii "EXECVE FAILED\n"
+    .asciz "EXECVE FAILED\n"
