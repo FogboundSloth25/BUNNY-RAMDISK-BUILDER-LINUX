@@ -84,3 +84,5 @@ arg_44:
     .asciz "44"
 exec_failed:
     .ascii "EXECVE FAILED\\n"
+exec_failed:
+    .ascii "EXECVE FAILED\\n"
