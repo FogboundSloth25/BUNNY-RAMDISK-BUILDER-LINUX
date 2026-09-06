@@ -20,20 +20,20 @@ case "$ID_LC" in
     sudo apt-get update
     sudo apt-get install -y bash ca-certificates curl git jq unzip xz-utils zip golang \
       python3 python3-venv python3-pip python3-dev \
-      build-essential pkg-config autoconf automake libtool gettext cmake \
+      build-essential clang llvm pkg-config autoconf automake libtool gettext cmake \
       libusb-1.0-0-dev libplist-dev libreadline-dev uuid-dev \
       libssl-dev libpng-dev fuse3 rsync tar sshpass
     ;;
   fedora)
     sudo dnf install -y bash ca-certificates curl git jq unzip xz zip golang \
-      python3 python3-pip python3-devel gcc gcc-c++ make pkgconf \
+      python3 python3-pip python3-devel gcc gcc-c++ clang llvm lld make pkgconf \
       autoconf automake libtool gettext \
       libusb1-devel libplist-devel readline-devel libuuid-devel \
       openssl-devel libpng-devel fuse3 rsync tar sshpass
     ;;
   arch)
     sudo pacman -Sy --needed --noconfirm bash ca-certificates curl git jq unzip xz zip go gettext \
-      python python-pip base-devel pkgconf cmake autoconf automake libtool \
+      python python-pip base-devel clang llvm lld pkgconf cmake autoconf automake libtool \
       libusb libplist readline libuuid openssl fuse3 rsync tar sshpass
     ;;
   *)
@@ -98,6 +98,21 @@ download https://raw.githubusercontent.com/Leeksov/usbliter8-sptm-patchfinder/ma
 download https://raw.githubusercontent.com/Leeksov/usbliter8-txm-patchfinder/main/txm_patchfinder.py "$BUNNY_PATCH/txm_patchfinder.py"
 download https://raw.githubusercontent.com/Leeksov/usbliter8ra1n/main/tools/usbliter8ctl "$BUNNY_TOOLS/usbliter8ctl"
 chmod 755 "$BUNNY_PATCH"/*.py "$BUNNY_TOOLS/usbliter8ctl"
+
+log "Installing ldid for ad-hoc Mach-O signing"
+LDID="$BUNNY_TOOLS/ldid"
+case "$(uname -m)" in
+  x86_64) LDID_ASSET="ldid_linux_x86_64" ;;
+  aarch64|arm64) LDID_ASSET="ldid_linux_aarch64" ;;
+  *) die "unsupported Linux host architecture for ldid: $(uname -m)" ;;
+esac
+if [[ ! -x "$LDID" ]]; then
+  download "https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/$LDID_ASSET" "$LDID"
+  chmod 0755 "$LDID"
+fi
+"$LDID" 2>&1 | grep -Fq "Link Identity Editor" ||
+  die "ldid self-test failed"
+echo "[OK] ldid: $LDID"
 
 if [[ ! -x "$BUNNY_TOOLS/trustcache" ]]; then
   SRC="$BUNNY_THIRD_PARTY/trustcache"
