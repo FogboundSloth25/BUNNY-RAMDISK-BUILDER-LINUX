@@ -185,7 +185,7 @@ def build(source: Path, output: Path, clang: str, objcopy: str) -> None:
 
         # Structural verification before signing.
         b = output.read_bytes()
-        if b[:4] != b"\\xcf\\xfa\\xed\\xfe":
+        if b[:4] != bytes.fromhex("cffaedfe"):
             raise SystemExit(f"bad Mach-O magic: {b[:4].hex()}")
         if struct.unpack_from("<I", b, 12)[0] != MH_EXECUTE:
             raise SystemExit("launcher is not MH_EXECUTE")
