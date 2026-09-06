@@ -72,7 +72,17 @@ def parse_macho(path: Path) -> tuple[int, int, int, int, bool]:
         raise SystemExit(f"LC_MAIN entryoff 0x{entryoff:x} outside file")
     return cputype, subtype, filetype, entryoff, found_ios
 
+def verify_source_syscalls(source: Path) -> None:
+    text = source.read_text(encoding="utf-8")
+    marker = "movk x16, #0x2000, lsl #16"
+    if text.count(marker) < 3:
+        raise SystemExit("Darwin syscall ABI check failed: expected 0x20000000 namespace for write/execve/exit")
+    if "movk x16, #0x200, lsl #16" in text:
+        raise SystemExit("invalid Darwin syscall namespace 0x02000000 remains in launcher source")
+    print("Darwin syscall ABI source check: 0x20000000 namespace ✅")
+
 def build(source: Path, output: Path, clang: str, linker: str | None) -> None:
+    verify_source_syscalls(source)
     ld = find_ld64(linker)
     flavor = []
     if Path(ld).name == "ld.lld":
