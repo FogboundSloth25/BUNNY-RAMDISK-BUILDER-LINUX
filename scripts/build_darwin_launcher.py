@@ -115,12 +115,43 @@ def build(source: Path, output: Path, clang: str, objcopy: str) -> None:
             else:
                 patch_add_imm12(text, off, target)
 
-        # Ensure there are no remaining placeholder relocations.
-        for off, kind, _ in relocations:
+        # Verify each relocated pair against the final symbol address. An
+        # ADRP with a zero page delta is valid when the symbol is on the same
+        # 4 KiB page as the instruction; therefore checking for the literal
+        # encoding 0x90000000 would falsely reject a correctly relocated ADRP.
+        def decode_adrp_target(ins: int, pc: int) -> int:
+            if (ins & 0x9F000000) != 0x90000000:
+                raise SystemExit(f"relocation site is not ADRP: ins=0x{ins:08x}")
+            immlo = (ins >> 29) & 0x3
+            immhi = (ins >> 5) & 0x7FFFF
+            imm21 = (immhi << 2) | immlo
+            if imm21 & (1 << 20):
+                imm21 -= 1 << 21
+            return (pc & ~0xFFF) + (imm21 << 12)
+
+        resolved = {}
+        for off, kind, name in relocations:
+            target = cstr_va + symbol_offset(name, cstr)
             if kind == "PAGE21":
-                raw = struct.unpack_from("<I", text, off)[0]
-                if raw == 0x90000000:
-                    raise SystemExit(f"unresolved ADRP at text+0x{off:x}")
+                ins = struct.unpack_from("<I", text, off)[0]
+                actual = decode_adrp_target(ins, text_va + off)
+                if actual != (target & ~0xFFF):
+                    raise SystemExit(
+                        f"ADRP relocation mismatch at text+0x{off:x}: "
+                        f"expected page 0x{target & ~0xFFF:x}, got 0x{actual:x}"
+                    )
+            else:
+                ins = struct.unpack_from("<I", text, off)[0]
+                if (ins & 0x3B000000) != 0x11000000:
+                    raise SystemExit(
+                        f"relocation site is not ADD-immediate: ins=0x{ins:08x}"
+                    )
+                actual_pageoff = (ins >> 10) & 0xFFF
+                if actual_pageoff != (target & 0xFFF):
+                    raise SystemExit(
+                        f"PAGEOFF12 relocation mismatch at text+0x{off:x}: "
+                        f"expected 0x{target & 0xfff:x}, got 0x{actual_pageoff:x}"
+                    )
 
         sizeofcmds = 72 + 24 + 24
         header = struct.pack(
